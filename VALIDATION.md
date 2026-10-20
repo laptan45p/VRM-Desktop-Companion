@@ -1,6 +1,6 @@
-# Validation — 0.1.11
+# Validation — 0.1.12
 
-54 tests passed with the supplied runtime:
+59 tests passed with the supplied runtime:
 
 - Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
 - VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
@@ -45,6 +45,11 @@ Cloth drag coverage:
 - Settings default migration, clamping, and percentage/degree UI save behavior.
 - Existing real spring/SkinnedMesh restoration regression runs with the enlarged defaults.
 - Headless checks of all three supplied models confirmed selected hem vertices move roughly 2.3–2.5x farther under a large identical gesture than with the previous defaults, then return after release (with incidental spring motion on two models). Textured desktop appearance remains unverified.
+
+0.1.12 coverage:
+- Both hands and VRM 0.x/1.0 track reachable IK targets and restore after release. Unreachable and shoulder-origin targets remain finite and preserve upper/forearm lengths.
+- Skin-influence/distance selection, missing arm fallback, cancellation, renderer gesture ownership/Shift movement, and restricted hand LLM reactions/toggle.
+- Headless validation of all three supplied models checks both actual raw and normalized hand positions and restoration using their real humanoid/spring runtimes; textures are omitted. Native textured dragging remains unverified.
 
 Electron window calls and DOM operations were tested with doubles. No native Windows/GPU window test was performed. Windows mouse-event forwarding, desktop transparency, tray behavior, real Ollama/LM Studio inference and precise appearance on user VRMs remain unverified.
 

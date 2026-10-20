@@ -110,9 +110,9 @@ handle('save',settings=>{
 handle('models',s=>listModels(cleanSettings(s)));handle('choose-vrm',selectVRM);
 handle('vrm',async()=>{const p=store.data.settings.modelPath;if(!p)return null;if((await fs.stat(p)).size>300*1024*1024)throw new Error('VRMが300MBを超えています。');return new Uint8Array(await fs.readFile(p));});
 handle('touch',(region,gesture)=>{
- if(pass||!store.data.settings.touchEnabled||region==='cloth'&&!store.data.settings.clothDrag)return;
+ if(pass||!store.data.settings.touchEnabled||region==='cloth'&&!store.data.settings.clothDrag||region==='hand'&&!store.data.settings.handDrag)return;
  const reaction=reactions.perform(region,gesture,Date.now());if(!reaction)return;
- const text=region==='cloth'?'わっ、裾を引っ張らないでね！':reaction.emotion==='angry'?'もう、そこは触らないで！':region!=='head'?'えっ…そこは、恥ずかしいよ。':gesture==='stroke'?'えへへ…くすぐったいよ。':'わっ、びっくりした！';
+ const text=region==='hand'?'わっ、手を持ち上げたの？':region==='cloth'?'わっ、裾を引っ張らないでね！':reaction.emotion==='angry'?'もう、そこは触らないで！':region!=='head'?'えっ…そこは、恥ずかしいよ。':gesture==='stroke'?'えへへ…くすぐったいよ。':'わっ、びっくりした！';
  if(!active)speak('',{touch:true});
  broadcast({reaction});
  if(active)return;
