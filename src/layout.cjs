@@ -5,7 +5,7 @@
  'use strict';
  const TOP=8,BOTTOM=8,BASE_WIDTH=440,BASE_HEIGHT=518;
  function mascotBounds(scale,area,previous){
-  const value=Number(scale),factor=Number.isFinite(value)?Math.max(.5,Math.min(3.6,value)):1;
+  const value=Number(scale),factor=Number.isFinite(value)?Math.max(.5,Math.min(10.0,value)):1;
   // Preserve scale even when larger than a display. Only explicit reset uses a screen anchor.
   const width=Math.max(280,Math.round(BASE_WIDTH*factor));
   const height=Math.round(BASE_HEIGHT*factor)+TOP+BOTTOM;

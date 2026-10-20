@@ -22,7 +22,7 @@ test('startup shows only the mascot; scale is independent of the screen and rese
  assert.deepEqual(mascot.getBounds(),layout.mascotBounds(.5,area));
  const result=await invoke('save',{...DEFAULTS,scale:1.8});assert.equal(result.ok,true);assert.equal(mascot.bounds.height,Math.round(518*1.8)+16);
  await invoke('action','reset');assert.deepEqual(mascot.getBounds(),layout.mascotBounds(1.8,area));
- const before=mascot.getBounds();area.width=1280;area.height=680;screen.emit('display-metrics-changed');assert.deepEqual(mascot.getBounds(),before);const large=await invoke('save',{...DEFAULTS,scale:3.6});assert.equal(large.ok,true);assert.equal(mascot.bounds.width,1584);assert.equal(mascot.bounds.height,1881);
+ const before=mascot.getBounds();area.width=1280;area.height=680;screen.emit('display-metrics-changed');assert.deepEqual(mascot.getBounds(),before);const large=await invoke('save',{...DEFAULTS,scale:10.0});assert.equal(large.ok,true);assert.equal(mascot.bounds.width,4400);assert.equal(mascot.bounds.height,5196);
 });
 test('left click greets in a bubble and opens focused input; successful reply replaces speech',async()=>{
  const {windows,invoke,timers}=await boot();const [control,mascot,input,bubble]=windows;
@@ -52,7 +52,7 @@ test('input position survives reopening, mascot movement, settings save and rest
  await invoke('action','talk');const chosen={...input.getBounds(),x:-1200,y:300};input.setBounds(chosen);input.emit('move');
  await invoke('action','close-input');await as(1,'drag','start',0,0);await as(1,'drag','move',-800,100);await as(1,'drag','end',-800,100);
  await invoke('action','talk');assert.deepEqual(input.getBounds(),chosen);
- await invoke('save',{...DEFAULTS,scale:3.6});assert.deepEqual(input.getBounds(),chosen);
+ await invoke('save',{...DEFAULTS,scale:10.0});assert.deepEqual(input.getBounds(),chosen);
  const state=await invoke('state');assert.equal(state.data.settings.inputX,chosen.x);assert.equal(state.data.settings.inputY,chosen.y);
  const next=await boot({inputX:chosen.x,inputY:chosen.y});assert.equal(next.windows[2].bounds.x,chosen.x);assert.equal(next.windows[2].bounds.y,chosen.y);
 });

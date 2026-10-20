@@ -84,6 +84,8 @@ function fitModel(root){
 function resizeViewport(){
  if(!renderer)return;
  const el=$('avatar'),width=Math.max(1,el.clientWidth),height=Math.max(1,el.clientHeight);
+ // Keep very large windows within an eight-megapixel rendering budget.
+ renderer.setPixelRatio(Math.min(devicePixelRatio,1.5,Math.sqrt(8000000/(width*height))));
  renderer.setSize(width,height,false);camera.aspect=width/height;
  fitModel(vrm?.scene||demoRoot);
 }
@@ -118,7 +120,7 @@ function initMascot(){
 
  scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(30,440/518,.01,100);
  try{renderer=new THREE.WebGLRenderer({alpha:true,antialias:true,powerPreference:'low-power'});}catch(e){api.modelStatus('3D表示を開始できません：'+e.message);return;}
- renderer.setClearColor(0x000000,0);renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(Math.max(1,$('avatar').clientWidth),Math.max(1,$('avatar').clientHeight),false);renderer.outputColorSpace=THREE.SRGBColorSpace;
+ renderer.setClearColor(0x000000,0);renderer.outputColorSpace=THREE.SRGBColorSpace;
  $('avatar').append(renderer.domElement);scene.add(new THREE.HemisphereLight(0xffffff,0x697c6c,2.4));const key=new THREE.DirectionalLight(0xfff4df,2.2);key.position.set(-1,2,3);scene.add(key);
  demoRoot=createDemo();resizeViewport();
  new ResizeObserver(resizeViewport).observe($('avatar'));

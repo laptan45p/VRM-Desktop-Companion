@@ -1,10 +1,10 @@
-# Validation — 0.1.5
+# Validation — 0.1.6
 
 33 tests passed with the supplied runtime:
 
 - Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
 - VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
-- Unrestricted movement beyond all four screen edges; 3.6x size is twice the previous maximum. Actual Three.js camera projection of bounding box corners at scale 0.5–3.6 on multiple screen sizes.
+- Unrestricted movement beyond all four screen edges; Maximum size is 10.0x. Actual Three.js camera projection of bounding box corners at scale 0.5–10.0 on multiple screen sizes.
 - Startup keeps settings, input and balloon hidden and shows only the mascot.
 - Left click greeting and focused input, speech replacement and dismissal.
 - Shared context menu for character right-click and tray left/right clicks.
