@@ -1,0 +1,23 @@
+{
+  "name": "vrm-desktop-companion",
+  "version": "0.1.2",
+  "private": true,
+  "description": "Local LLM desktop companion prototype for Windows",
+  "main": "src/main.cjs",
+  "license": "MIT",
+  "scripts": {
+    "build": "esbuild src/renderer.js --bundle --outfile=dist/renderer.js --format=iife --target=chrome130",
+    "start": "npm run build && electron .",
+    "test": "node --test test/*.test.cjs",
+    "package:win": "npm run build && electron-packager . VRM-Desktop-Companion --platform=win32 --arch=x64 --out=release --overwrite --ignore=^/release --ignore=^/test --ignore=^/node_modules/.cache --ignore=^/node_modules"
+  },
+  "dependencies": {
+    "@pixiv/three-vrm": "3.5.5",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "electron": "44.9.1",
+    "esbuild": "0.25.12",
+    "@electron/packager": "19.0.1"
+  }
+}
