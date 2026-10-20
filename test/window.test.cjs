@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{EventEmitter}=require('node:events');
 const {cleanSettings,DEFAULTS}=require('../src/backend.cjs');const layout=require('../src/layout.cjs');
-async function boot(saved={}){
+async function boot(saved={},touchGenerate=async()=>'LLMの反応'){
  const area={x:-1600,y:0,width:1600,height:900},handlers=new Map(),windows=[],screen=new EventEmitter(),app=new EventEmitter(),menus=[],trays=[],timers=[];
  Object.assign(app,{requestSingleInstanceLock:()=>true,whenReady:()=>Promise.resolve(),getPath:()=>'/test-data',setAppUserModelId:()=>{},quit:()=>{}});
  screen.getPrimaryDisplay=()=>({workArea:area});screen.getDisplayMatching=()=>({workArea:area});screen.getAllDisplays=()=>[{workArea:area}];
@@ -10,7 +10,7 @@ async function boot(saved={}){
  }
  class Store{constructor(){this.file='/test-data/companion.json';this.data={settings:{...DEFAULTS,scale:.5,...saved},history:[]};}load(){}save(){}}
  const electron={app,BrowserWindow:Window,ipcMain:{handle:(k,v)=>handlers.set(k,v)},dialog:{},Menu:{buildFromTemplate:v=>{const m={items:v,popup:()=>{m.opened=true;}};menus.push(m);return m;}},Tray:class extends EventEmitter{constructor(){super();trays.push(this);}setToolTip(){}popUpContextMenu(m){this.menu=m;}},nativeImage:{createFromPath:()=>({})},globalShortcut:{register:()=>true,unregisterAll:()=>{}},screen};
- const context={require:p=>p==='electron'?electron:p==='./backend.cjs'?{Store,cleanSettings,chat:async(_s,_h,t)=>'返事：'+t}:p==='./layout.cjs'?layout:p==='./interaction.cjs'?require('../src/interaction.cjs'):require(p),__dirname:path.resolve(__dirname,'../src'),AbortController,console,setTimeout:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimeout:()=>{}};
+ const context={require:p=>p==='electron'?electron:p==='./backend.cjs'?{Store,cleanSettings,chat:async(_s,_h,t)=>'返事：'+t,touchReply:touchGenerate}:p==='./layout.cjs'?layout:p==='./interaction.cjs'?require('../src/interaction.cjs'):p==='./touch-response.cjs'?{TouchResponder:class extends require('../src/touch-response.cjs').TouchResponder{constructor(options){super({...options,setTimer:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimer:()=>{}});}}}:require(p),__dirname:path.resolve(__dirname,'../src'),AbortController,console,setTimeout:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimeout:()=>{}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8'),context);await new Promise(r=>setImmediate(r));
  const invoke=(channel,...args)=>handlers.get(channel)({sender:windows[0].webContents},...args);
  const as=(i,channel,...args)=>handlers.get(channel)({sender:windows[i].webContents},...args);
@@ -70,4 +70,15 @@ test('touch IPC is mascot-only and respects disabling, with no input popup',asyn
  await as(1,'touch','head','poke');assert.equal(windows[2].visible,false);assert.equal(windows[1].events.at(-1).reaction.emotion,'surprised');
  for(let i=0;i<3;i++)await as(1,'touch','chest','poke');assert.equal(windows[1].events.at(-1).reaction.emotion,'angry');
  await invoke('save',{...DEFAULTS,touchEnabled:false});const n=windows[1].events.length;await as(1,'touch','head','stroke');assert.equal(windows[1].events.length,n);
+});
+
+test('configured model generates touch text after immediate motion without writing a conversation turn',async()=>{
+ const requests=[];const {windows,timers,as,invoke}=await boot({model:'local'},async(...args)=>{requests.push(args);return 'えへへ、ありがとう。';});
+ await as(1,'touch','head','stroke');assert.equal(windows[1].events.at(-1).reaction.emotion,'shy');assert.equal(requests.length,0);
+ await timers.at(-1).fn();assert.equal(requests.length,1);assert.equal(requests[0][2].region,'head');assert.ok(windows[3].events.some(e=>e.speech==='えへへ、ありがとう。'));assert.equal((await invoke('state')).data.history.length,0);
+});
+test('starting normal conversation cancels pending touch text and touches do not replace a busy reply',async()=>{
+ let resolve,signal;const {windows,timers,as,invoke}=await boot({model:'local'},(_s,_h,_r,s)=>{signal=s;return new Promise(r=>resolve=r);});
+ await as(1,'touch','head','stroke');const running=timers.at(-1).fn();await invoke('action','talk');assert.equal(signal.aborted,true);resolve('遅れて届いた反応');await running;assert.ok(!windows[3].events.some(e=>e.speech==='遅れて届いた反応'));
+ const request=invoke('chat','会話です');await as(1,'touch','head','poke');await request;assert.equal((await invoke('state')).data.speech,'返事：会話です');
 });

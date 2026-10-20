@@ -49,19 +49,27 @@ async function listModels(settings) {
   const r = await requestJSON(base + (settings.provider === 'ollama' ? '/api/tags' : '/v1/models'), {}, 10000);
   return (settings.provider === 'ollama' ? (r.models || []).map(m => m.name) : (r.data || []).map(m => m.id)).filter(x => typeof x === 'string');
 }
-async function chat(settings, history, userText, signal) {
+async function chat(settings, history, userText, signal, {maxTokens=512,timeoutMs=180000,systemExtra=''}={}) {
   const base = localBase(settings.endpoint);
   if (!settings.model.trim()) throw new Error('設定でモデルを取得・選択してください。');
   if (settings.provider === 'ollama' && /(?:[:\-]cloud)(?:$|[:\-])/i.test(settings.model)) throw new Error('ローカル用モデルを選んでください（cloudモデルには対応しません）。');
-  const messages = [{role:'system',content:`あなたの名前は「${settings.name}」です。\n${settings.persona}`}, ...history.slice(-settings.historyTurns * 2), {role:'user',content:userText}];
+  const messages = [{role:'system',content:`あなたの名前は「${settings.name}」です。\n${settings.persona}${systemExtra?"\n"+systemExtra:""}`}, ...history.slice(-settings.historyTurns * 2), {role:'user',content:userText}];
   const ollama = settings.provider === 'ollama';
-  const body = {model:settings.model, messages, stream:false, ...(ollama ? {options:{temperature:settings.temperature,num_predict:512}} : {temperature:settings.temperature,max_tokens:512})};
+  const body = {model:settings.model, messages, stream:false, ...(ollama ? {options:{temperature:settings.temperature,num_predict:maxTokens}} : {temperature:settings.temperature,max_tokens:maxTokens})};
   // Qwen3's optional thinking can consume the entire short reply budget.
   if (ollama && /^qwen3(?::|$)/i.test(settings.model)) body.think = false;
-  const r = await requestJSON(base + (ollama ? '/api/chat' : '/v1/chat/completions'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});
+  const r = await requestJSON(base + (ollama ? '/api/chat' : '/v1/chat/completions'), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal},timeoutMs);
   const answer = ollama ? r.message?.content : r.choices?.[0]?.message?.content;
   if (typeof answer !== 'string' || !answer.trim()) throw new Error('返答が空でした。モデル設定やサーバーログを確認してください。');
   return answer.trim();
+}
+async function touchReply(settings,history,reaction,signal){
+ const regions={head:'頭・顔',chest:'胸部',butt:'臀部'},gestures={poke:'軽くつつかれた',stroke:'撫でられた'},emotions={shy:'照れ・恥ずかしさ',surprised:'驚き',angry:'怒り'};
+ if(!regions[reaction.region]||!gestures[reaction.gesture]||!emotions[reaction.emotion])throw new Error('反応の指定が不正です。');
+ const systemExtra='デスクトップ上の触れ合いへの短い反応を演じてください。設定された性格・口調と直前の会話を踏まえ、指定の感情を声色が伝わる自然な言葉で表現してください。反応のセリフだけを日本語1〜2文、70文字以内で返してください。解説・ト書き・話者ラベルは不要です。性的な描写はせず、怒りの指定では嫌だという意思を保ち、触るよう誘わないでください。';
+ const prompt=`【今起きた操作】${regions[reaction.region]}を${gestures[reaction.gesture]}。\n【感情】${emotions[reaction.emotion]}\n【胸部・臀部への連続操作回数】${reaction.count}回\nこの瞬間のあなたの短い反応は？`;
+ const answer=await chat({...settings,historyTurns:Math.min(settings.historyTurns,3)},history,prompt,signal,{maxTokens:128,timeoutMs:15000,systemExtra});
+ return answer.slice(0,160);
 }
 class Store {
   constructor(dir) { this.file = path.join(dir, 'companion.json'); this.data = {settings:{...DEFAULTS},history:[]}; }
@@ -80,4 +88,4 @@ class Store {
     const tmp=this.file+'.tmp'; fs.writeFileSync(tmp, JSON.stringify(this.data,null,2),'utf8'); fs.renameSync(tmp,this.file);
   }
 }
-module.exports = {DEFAULTS, cleanSettings, localBase, requestJSON, listModels, chat, Store};
+module.exports = {DEFAULTS, cleanSettings, localBase, requestJSON, listModels, chat, touchReply, Store};

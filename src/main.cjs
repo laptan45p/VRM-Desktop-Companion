@@ -1,11 +1,13 @@
 'use strict';
 const {ReactionCounter}=require('./interaction.cjs');
 const reactions=new ReactionCounter();
+const {TouchResponder}=require('./touch-response.cjs');
 const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,screen}=require('electron');
 const fs=require('node:fs/promises'),path=require('node:path');
 const {mascotBounds,popupBounds,restoreInputBounds}=require('./layout.cjs');
-const {Store,cleanSettings,listModels,chat}=require('./backend.cjs');
+const {Store,cleanSettings,listModels,chat,touchReply}=require('./backend.cjs');
 let store,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null;
+const touchResponses=new TouchResponder({generate:touchReply,publish:(text,reaction)=>{speak(text,{touch:true});broadcast({reaction});}});
 const gotLock=app.requestSingleInstanceLock();if(!gotLock)app.quit();
 const allWindows=()=>[control,mascot,input,bubble].filter(w=>w&&!w.isDestroyed());
 function result(fn){return async(...args)=>{try{return {ok:true,data:await fn(...args)};}catch(e){return {ok:false,error:e.message};}};}
@@ -30,11 +32,12 @@ function resizeMascot(reset=false){
  mascot.setBounds(mascotBounds(store.data.settings.scale,r,previous),false);positionPopups();
 }
 function applyHit(){if(mascot&&!mascot.isDestroyed())mascot.setIgnoreMouseEvents(pass||(!hovered&&!drag),{forward:true});}
-function setPass(value){pass=!!value;drag=null;applyHit();broadcast();}
+function setPass(value){touchResponses.cancel();pass=!!value;drag=null;applyHit();broadcast();}
 function resetMascot(){resizeMascot(true);mascot.show();setPass(false);}
-function hideMascot(){mascot.hide();bubble.hide();input.hide();drag=null;applyHit();}
-function hideSpeech(){clearTimeout(speechTimer);speechTimer=null;speech='';bubble.hide();broadcast({speech:''});}
-function speak(text,{thinking=false}={}){
+function hideMascot(){touchResponses.cancel();mascot.hide();bubble.hide();input.hide();drag=null;applyHit();}
+function hideSpeech(){touchResponses.cancel();clearTimeout(speechTimer);speechTimer=null;speech='';bubble.hide();broadcast({speech:''});}
+function speak(text,{thinking=false,touch=false}={}){
+ if(!touch)touchResponses.cancel();
  clearTimeout(speechTimer);speech=String(text).slice(0,12000);broadcast({speech,thinking});positionPopups();
  if(speech){bubble.showInactive();if(!thinking){speechTimer=setTimeout(()=>{speechTimer=null;speech='';bubble.hide();broadcast({speech:''});},Math.max(7000,Math.min(45000,speech.length*110)));speechTimer.unref?.();}}
  else bubble.hide();
@@ -61,6 +64,7 @@ async function selectVRM(){
  const r=await dialog.showOpenDialog(mascot,{title:'VRMを選択',filters:[{name:'VRMモデル',extensions:['vrm']}],properties:['openFile']});
  if(r.canceled)return null;
  const file=r.filePaths[0];if((await fs.stat(file)).size>300*1024*1024)throw new Error('読み込み上限は300MBです。');
+ touchResponses.cancel();reactions.reset();
  store.data.settings.modelPath=file;store.save();mascot.show();broadcast({reloadVRM:true});return file;
 }
 if(gotLock)app.whenReady().then(async()=>{
@@ -93,12 +97,13 @@ if(gotLock)app.whenReady().then(async()=>{
  resizeMascot();applyHit();mascot.showInactive();if(startupError)speak(startupError);
 });
 app.on('second-instance',()=>{if(input)showInput();});
-app.on('before-quit',()=>{app.isQuitting=true;active?.abort();clearTimeout(speechTimer);if(inputSaveTimer){clearTimeout(inputSaveTimer);try{store.save();}catch{}}});
+app.on('before-quit',()=>{app.isQuitting=true;touchResponses.cancel();active?.abort();clearTimeout(speechTimer);if(inputSaveTimer){clearTimeout(inputSaveTimer);try{store.save();}catch{}}});
 app.on('will-quit',()=>globalShortcut.unregisterAll());app.on('window-all-closed',()=>app.quit());
 function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=>{if(!allWindows().some(w=>w.webContents===e.sender)||only&&e.sender!==only()?.webContents)throw new Error('不明なウィンドウです。');return fn(...args);}));}
 handle('state',()=>({...store.data,busy:!!active,pass,startupError,dataPath:store.file,speech}));
 handle('save',settings=>{
  if(active)throw new Error('生成を停止してから設定を変更してください。');
+ touchResponses.cancel();
  store.data.settings=cleanSettings({...settings,modelPath:store.data.settings.modelPath,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY,bubbleX:store.data.settings.bubbleX,bubbleY:store.data.settings.bubbleY});store.save();
  for(const w of [mascot,input,bubble])w.setAlwaysOnTop(store.data.settings.topmost);resizeMascot();broadcast();return store.data.settings;
 });
@@ -108,7 +113,10 @@ handle('touch',(region,gesture)=>{
  if(pass||!store.data.settings.touchEnabled)return;
  const reaction=reactions.perform(region,gesture,Date.now());if(!reaction)return;
  const text=reaction.emotion==='angry'?'もう、そこは触らないで！':region!=='head'?'えっ…そこは、恥ずかしいよ。':gesture==='stroke'?'えへへ…くすぐったいよ。':'わっ、びっくりした！';
- speak(text);broadcast({reaction});
+ if(!active)speak('',{touch:true});
+ broadcast({reaction});
+ if(active)return;
+ touchResponses.request({...store.data.settings},store.data.history.slice(),reaction,text);
 },()=>mascot);
 handle('hit',value=>{hovered=!!value;applyHit();},()=>mascot);
 handle('drag',(phase,x,y)=>{
@@ -129,7 +137,7 @@ handle('chat',async text=>{
   broadcast({reply:answer,mood:'happy'});speak(answer);return answer;
  }catch(e){speak(e.message);throw e;}finally{active=null;broadcast({mood:'idle'});}
 });
-handle('cancel',()=>{active?.abort();});handle('clear',()=>{if(active)throw new Error('生成を停止してください。');store.data.history=[];store.save();broadcast();});
+handle('cancel',()=>{touchResponses.cancel();active?.abort();});handle('clear',()=>{touchResponses.cancel();if(active)throw new Error('生成を停止してください。');store.data.history=[];store.save();broadcast();});
 handle('action',name=>{
  if(name==='test-motion'){speak('こんにちは。こんな感じでお話しするよ。よろしくね。');broadcast({greeting:true});}
  else if(name==='reset-bubble'){const b=bubble.getBounds();bubble.setBounds(popupBounds(mascot.getBounds(),b.width,b.height,area(),'bubble'),false);rememberPosition(bubble,'bubble');positionPopups();}

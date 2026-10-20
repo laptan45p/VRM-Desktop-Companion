@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const http=require('node:http');
 const os=require('node:os');const fs=require('node:fs');const path=require('node:path');
-const {localBase,cleanSettings,DEFAULTS,Store,chat,listModels,requestJSON}=require('../src/backend.cjs');
+const {localBase,cleanSettings,DEFAULTS,Store,chat,touchReply,listModels,requestJSON}=require('../src/backend.cjs');
 async function server(fn,run){const s=http.createServer(fn);await new Promise(r=>s.listen(0,'127.0.0.1',r));try{await run(`http://127.0.0.1:${s.address().port}`);}finally{s.closeAllConnections();await new Promise(r=>s.close(r));}}
 async function readBody(req){let b='';for await(const c of req)b+=c;return JSON.parse(b);}
 test('only loopback HTTP servers accepted; API suffix normalized',()=>{
@@ -37,4 +37,14 @@ test('clamp settings, preserve defaults, reject unknown providers and cloud name
 });
 test('Qwen3 disables optional thinking to reserve the short reply budget',async()=>{
  await server(async(req,res)=>{const b=await readBody(req);assert.equal(b.think,false);res.setHeader('Content-Type','application/json');res.end(JSON.stringify({message:{content:'こんにちは'}}));},async endpoint=>{assert.equal(await chat({...DEFAULTS,endpoint,model:'qwen3:4b'},[],'hi'),'こんにちは');});
+});
+
+test('touch replies preserve persona and recent context with bounded output on both local providers',async()=>{
+ for(const provider of ['ollama','lmstudio'])await server(async(req,res)=>{
+  const body=await readBody(req);assert.equal(body.model,'local-model');assert.match(body.messages[0].content,/テストの口調/);assert.match(body.messages[0].content,/70文字/);assert.equal(body.messages.length,8);assert.match(body.messages.at(-1).content,/臀部.*撫でられた/);assert.match(body.messages.at(-1).content,/怒り/);assert.match(body.messages.at(-1).content,/3回/);assert.equal(body.options?.num_predict||body.max_tokens,128);
+  res.setHeader('Content-Type','application/json');res.end(JSON.stringify(provider==='ollama'?{message:{content:'もう、そこはやめてよ！'}}:{choices:[{message:{content:'もう、そこはやめてよ！'}}]}));
+ },async endpoint=>{
+  const history=Array.from({length:20},(_,i)=>({role:i%2?'assistant':'user',content:String(i)})),original=JSON.stringify(history);
+  assert.equal(await touchReply({...DEFAULTS,provider,endpoint,model:'local-model',persona:'テストの口調'},history,{region:'butt',gesture:'stroke',emotion:'angry',count:3}),'もう、そこはやめてよ！');assert.equal(JSON.stringify(history),original);
+ });
 });

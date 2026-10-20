@@ -1,6 +1,6 @@
-# Validation — 0.1.6
+# Validation — 0.1.7
 
-33 tests passed with the supplied runtime:
+39 tests passed with the supplied runtime:
 
 - Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
 - VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
@@ -20,6 +20,11 @@
 - Motion controls retain their settings; preview action works without an LLM.
 - Input position persists independently through reopening, mascot movement, settings save and restart.
 - Renderer tests for input failure/retry, IME handling, Escape, safe plain-text speech and actual mesh picking.
+
+Additional touch LLM coverage:
+- Ollama and LM Studio request bodies include persona, recent history, region/gesture/emotion/count, and a 128-token budget without mutating history.
+- Debouncing, aborting superseded requests, stale response suppression and failure/unconfigured-model fallback.
+- Immediate motion with deferred generated text, no touch history insertion, and normal conversation priority/cancellation.
 
 Electron window calls and DOM operations were tested with doubles. No native Windows/GPU window test was performed. Windows mouse-event forwarding, desktop transparency, tray behavior, real Ollama/LM Studio inference and precise appearance on user VRMs remain unverified.
 
