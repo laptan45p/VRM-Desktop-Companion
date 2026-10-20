@@ -38,7 +38,7 @@
    this.target.clampLength(0,this.height*.06);
   }
   release(){this.held=false;this.target.set(0,0,0);}
-  restore(){const changed=this.applied.length;for(const [bone,q]of this.applied)bone.quaternion.copy(q);this.applied=[];if(changed)this.vrm.scene.updateMatrixWorld(true);}
+  restore(){const changed=this.applied.length;for(const [bone,q]of this.applied){bone.quaternion.copy(q);bone.updateMatrix();}this.applied=[];if(changed)this.vrm.scene.updateMatrixWorld(true);}
   reset(){this.restore();this.held=false;this.chain=null;this.delta.set(0,0,0);this.target.set(0,0,0);}
   update(dt){
    this.delta.lerp(this.target,1-Math.exp(-(this.held?18:10)*Math.max(0,Math.min(.1,dt))));
@@ -50,7 +50,9 @@
     const world=bone.getWorldPosition(new this.Vector3()).add(this.delta.clone().multiplyScalar(.5));const force=bone.worldToLocal(world);
     const q=bone.quaternion.clone().setFromUnitVectors(direction.clone().normalize(),direction.clone().add(force).normalize()),identity=q.clone().identity(),angle=q.angleTo(identity);
     if(angle>.5)q.slerp(identity,1-.5/angle);
-    this.applied.push([bone,bone.quaternion.clone()]);bone.quaternion.multiply(q);bone.updateMatrixWorld(true);
+    this.applied.push([bone,bone.quaternion.clone()]);bone.quaternion.multiply(q);
+    // VRM spring joints disable matrixAutoUpdate; quaternion changes alone never reach the mesh.
+    bone.updateMatrix();bone.updateMatrixWorld(true);
    }
    this.vrm.scene.updateMatrixWorld(true);
   }

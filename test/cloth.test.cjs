@@ -49,3 +49,23 @@ test('restoring before a spring update preserves its new pose; cancellation rest
 test('a purely upward pull bends hanging cloth rather than shortening or leaving it frozen',()=>{
  const {cloth,chains,hit}=fixture();assert.ok(cloth.begin(hit));const base=chains[0].map(b=>b.quaternion.clone());cloth.move(new Vector3(0,.1,0));cloth.update(.05);assert.ok(chains[0].some((b,i)=>b.quaternion.angleTo(base[i])>.01));cloth.reset();
 });
+
+test('real VRM spring bones move the skinned cloth vertices and GPU matrices, then restore cleanly',()=>{
+ const {SkinnedMesh,Skeleton,BufferGeometry,BufferAttribute,VRMSpringBoneJoint,VRMSpringBoneManager}=require('./bundle-runtime.cjs');
+ for(const [count,segments,english]of [[8,4,false],[12,5,true]]){
+  const {scene,chains,cloth}=fixture(count,segments,english),bones=chains.flat(),spring=new VRMSpringBoneManager();
+  for(const chain of chains)for(let i=0;i<chain.length-1;i++)spring.addJoint(new VRMSpringBoneJoint(chain[i],chain[i+1]));spring.setInitState();
+  const point=chains[0].at(-1).getWorldPosition(new Vector3()),geometry=new BufferGeometry();
+  geometry.setAttribute('position',new BufferAttribute(new Float32Array([point.x,point.y,point.z+.03,point.x+.01,point.y,point.z+.03,point.x,point.y+.01,point.z+.03]),3));
+  geometry.setAttribute('skinIndex',new BufferAttribute(new Uint16Array([segments-2,0,0,0,segments-2,0,0,0,segments-2,0,0,0]),4));
+  geometry.setAttribute('skinWeight',new BufferAttribute(new Float32Array([1,0,0,0,1,0,0,0,1,0,0,0]),4));
+  const mesh=new SkinnedMesh(geometry);scene.add(mesh);mesh.bind(new Skeleton(bones));scene.updateMatrixWorld(true);mesh.skeleton.update();
+  const baseline=mesh.getVertexPosition(0,new Vector3()).clone(),matrices=mesh.skeleton.boneMatrices.slice();
+  assert.ok(cloth.begin({object:mesh,face:{a:0,b:1,c:2},point:baseline}));cloth.move(new Vector3(.07,.06,.03));
+  for(let i=0;i<45;i++){cloth.restore();spring.update(1/60);cloth.update(1/60);mesh.skeleton.update();}
+  assert.ok(mesh.getVertexPosition(0,new Vector3()).distanceTo(baseline)>.01,'The mesh must visibly move, not only the quaternion');
+  assert.ok(mesh.skeleton.boneMatrices.some((v,i)=>Math.abs(v-matrices[i])>.01),'GPU bone matrices must change');
+  cloth.release();for(let i=0;i<120;i++){cloth.restore();spring.update(1/60);cloth.update(1/60);}cloth.restore();mesh.skeleton.update();
+  assert.ok(mesh.getVertexPosition(0,new Vector3()).distanceTo(baseline)<1e-5);assert.equal(chains[0][0].matrixAutoUpdate,false);geometry.dispose();mesh.skeleton.dispose();
+ }
+});
