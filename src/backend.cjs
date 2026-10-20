@@ -4,7 +4,7 @@ const path = require('node:path');
 const DEFAULTS = {
   provider: 'ollama', endpoint: 'http://127.0.0.1:11434', model: '',
   name: 'コンパニオン', persona: 'あなたはデスクトップに住む親しみやすい相棒です。日本語で自然に会話してください。返答は基本的に短く、相手の話をよく聞いてください。',
-  temperature: 0.7, historyTurns: 12, modelPath: '', scale: 1, angle: 0, topmost: true, inputX: null, inputY: null, lipSync: true, softIdle: true, motionStrength: 0.65, touchEnabled: true, touchZoneScale: 1, bubbleX: null, bubbleY: null, bubbleFont: 'Yu Gothic UI', bubbleFontSize: 13,
+  temperature: 0.7, historyTurns: 12, modelPath: '', scale: 1, angle: 0, topmost: true, inputX: null, inputY: null, lipSync: true, softIdle: true, motionStrength: 0.65, touchEnabled: true, clothDrag: true, touchZoneScale: 1, bubbleX: null, bubbleY: null, bubbleFont: 'Yu Gothic UI', bubbleFontSize: 13,
 };
 function cleanSettings(input = {}) {
   const s = { ...DEFAULTS };
@@ -15,7 +15,7 @@ function cleanSettings(input = {}) {
   }
   for(const k of ['inputX','inputY','bubbleX','bubbleY'])if(typeof input[k]==='number'&&Number.isFinite(input[k]))s[k]=Math.round(Math.max(-100000,Math.min(100000,input[k])));
   s.historyTurns = Math.round(s.historyTurns);
-  for(const k of ['topmost','lipSync','softIdle','touchEnabled'])if(typeof input[k]==='boolean')s[k]=input[k];
+  for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag'])if(typeof input[k]==='boolean')s[k]=input[k];
   return s;
 }
 function localBase(endpoint) {
@@ -64,10 +64,10 @@ async function chat(settings, history, userText, signal, {maxTokens=512,timeoutM
   return answer.trim();
 }
 async function touchReply(settings,history,reaction,signal){
- const regions={head:'頭・顔',chest:'胸部',butt:'臀部'},gestures={poke:'軽くつつかれた',stroke:'撫でられた'},emotions={shy:'照れ・恥ずかしさ',surprised:'驚き',angry:'怒り'};
+ const regions={head:'頭・顔',chest:'胸部',butt:'臀部',cloth:'スカートの裾'},gestures={poke:'軽くつつかれた',stroke:'撫でられた'},emotions={shy:'照れ・恥ずかしさ',surprised:'驚き',angry:'怒り'};
  if(!regions[reaction.region]||!gestures[reaction.gesture]||!emotions[reaction.emotion])throw new Error('反応の指定が不正です。');
  const systemExtra='デスクトップ上の触れ合いへの短い反応を演じてください。設定された性格・口調と直前の会話を踏まえ、指定の感情を声色が伝わる自然な言葉で表現してください。反応のセリフだけを日本語1〜2文、70文字以内で返してください。解説・ト書き・話者ラベルは不要です。性的な描写はせず、怒りの指定では嫌だという意思を保ち、触るよう誘わないでください。';
- const prompt=`【今起きた操作】${regions[reaction.region]}を${gestures[reaction.gesture]}。\n【感情】${emotions[reaction.emotion]}\n【胸部・臀部への連続操作回数】${reaction.count}回\nこの瞬間のあなたの短い反応は？`;
+ const prompt=`【今起きた操作】${regions[reaction.region]}を${reaction.region==='cloth'?'軽く引っ張られた':gestures[reaction.gesture]}。\n【感情】${emotions[reaction.emotion]}\n【胸部・臀部への連続操作回数】${reaction.count}回\nこの瞬間のあなたの短い反応は？`;
  const answer=await chat({...settings,historyTurns:Math.min(settings.historyTurns,3)},history,prompt,signal,{maxTokens:128,timeoutMs:15000,systemExtra});
  return answer.slice(0,160);
 }

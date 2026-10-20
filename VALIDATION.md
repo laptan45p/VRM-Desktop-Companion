@@ -1,6 +1,6 @@
-# Validation — 0.1.7
+# Validation — 0.1.8
 
-39 tests passed with the supplied runtime:
+46 tests passed with the supplied runtime:
 
 - Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
 - VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
@@ -25,6 +25,13 @@ Additional touch LLM coverage:
 - Ollama and LM Studio request bodies include persona, recent history, region/gesture/emotion/count, and a 128-token budget without mutating history.
 - Debouncing, aborting superseded requests, stale response suppression and failure/unconfigured-model fallback.
 - Immediate motion with deferred generated text, no touch history insertion, and normal conversation priority/cancellation.
+
+Cloth drag coverage:
+- 8/12 Japanese/English skirt chains with varied lengths, scales and rotations.
+- Hem picking requires cloth skin influence; background and torso do not select a chain.
+- Bounded drag angles and reach, smooth release, restoration before spring updates and cancellation.
+- Renderer gesture arbitration, upward motion, pointer cancellation and Shift-drag; cloth toggle and LLM reaction routing.
+- Read-only inspection of two supplied VRMs confirmed 8 four-node and 12 five-node chains, a selectable weighted hem vertex, bounded movement and reset using reconstructed scene transforms. Textured GPU rendering and native desktop gestures on these models were not verified. The supplied models are not included in the repository or release.
 
 Electron window calls and DOM operations were tested with doubles. No native Windows/GPU window test was performed. Windows mouse-event forwarding, desktop transparency, tray behavior, real Ollama/LM Studio inference and precise appearance on user VRMs remain unverified.
 

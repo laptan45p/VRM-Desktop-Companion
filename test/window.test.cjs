@@ -82,3 +82,8 @@ test('starting normal conversation cancels pending touch text and touches do not
  await as(1,'touch','head','stroke');const running=timers.at(-1).fn();await invoke('action','talk');assert.equal(signal.aborted,true);resolve('遅れて届いた反応');await running;assert.ok(!windows[3].events.some(e=>e.speech==='遅れて届いた反応'));
  const request=invoke('chat','会話です');await as(1,'touch','head','poke');await request;assert.equal((await invoke('state')).data.speech,'返事：会話です');
 });
+
+test('cloth reaction uses existing local LLM lane and respects the cloth toggle',async()=>{
+ let received;const {windows,timers,as,invoke}=await boot({model:'local'},async(_s,_h,r)=>{received=r;return '裾が引っ張られてるよ！';});await as(1,'touch','cloth','stroke');await timers.at(-1).fn();assert.equal(received.region,'cloth');assert.equal(received.emotion,'surprised');assert.ok(windows[3].events.some(e=>e.speech==='裾が引っ張られてるよ！'));
+ await invoke('save',{...DEFAULTS,clothDrag:false});const count=windows[1].events.length;await as(1,'touch','cloth','stroke');assert.equal(windows[1].events.length,count);
+});

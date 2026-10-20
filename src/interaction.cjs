@@ -21,7 +21,8 @@
   constructor(){this.reset();}
   reset(){this.count=0;this.last=-Infinity;}
   perform(region,gesture,now){
-   if(!['head','chest','butt'].includes(region)||!['stroke','poke'].includes(gesture)||!Number.isFinite(now))return null;
+   if(!['head','chest','butt','cloth'].includes(region)||!['stroke','poke'].includes(gesture)||!Number.isFinite(now))return null;
+   if(region==='cloth'){this.reset();return {emotion:'surprised',region,gesture,count:0};}
    if(region==='head'){this.reset();return {emotion:gesture==='stroke'?'shy':'surprised',region,gesture,count:0};}
    this.count=now>=this.last&&now-this.last<=10000?this.count+1:1;this.last=now;
    return {emotion:this.count>=3?'angry':'shy',region,gesture,count:this.count};
