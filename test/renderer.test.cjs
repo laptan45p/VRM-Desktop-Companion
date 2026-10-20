@@ -67,3 +67,7 @@ test('cloth drag owns its gesture, releases on cancellation, and Shift preserves
  const count=calls.filter(c=>c[0]==='touch').length;el.onpointerdown(event());el.onpointercancel();el.onpointerup(event());assert.equal(calls.filter(c=>c[0]==='touch').length,count);
  el.onpointerdown(event({shiftKey:true}));el.onpointermove(event({screenX:130}));el.onpointerup(event({screenX:130}));assert.ok(calls.some(c=>c[0]==='drag'&&c[1]==='move'));
 });
+
+test('cloth range controls load defaults and save percentage and angle correctly',async()=>{
+ const {node,calls}=await boot('control');assert.equal(Number(node('clothReach').value),18);assert.equal(Number(node('clothAngle').value),80);node('clothReach').value='40';node('clothAngle').value='110';await node('settingsForm').onsubmit({preventDefault(){}});const saved=calls.find(c=>c[0]==='save')[1];assert.equal(saved.clothReach,.4);assert.equal(saved.clothAngle,110);
+});

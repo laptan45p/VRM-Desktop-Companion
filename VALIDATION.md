@@ -1,6 +1,6 @@
-# Validation — 0.1.10
+# Validation — 0.1.11
 
-51 tests passed with the supplied runtime:
+54 tests passed with the supplied runtime:
 
 - Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
 - VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
@@ -39,6 +39,12 @@ Cloth drag coverage:
 - Seven coat chains are detected; missing garment chains safely ignore repeated drag attempts.
 - The third supplied VRM was loaded headlessly with its actual geometry, skins, humanoid and spring definitions, omitting textures. With the fix, a selected coat hem vertex moved about 0.0183 model units and returned to its original position after release.
 - Headless profiling of that model measured original repeated raycasts around 78–120ms and optimized warmed queries around 36–40ms. These timings are environment-specific, not native desktop freeze reproduction. Exact native freezing remains unconfirmed.
+
+0.1.11 coverage:
+- Larger defaults move the test hem farther than the former 6%/0.5rad limits; configurable 2–50% reach and 10–120deg bend remain bounded under extreme input.
+- Settings default migration, clamping, and percentage/degree UI save behavior.
+- Existing real spring/SkinnedMesh restoration regression runs with the enlarged defaults.
+- Headless checks of all three supplied models confirmed selected hem vertices move roughly 2.3–2.5x farther under a large identical gesture than with the previous defaults, then return after release (with incidental spring motion on two models). Textured desktop appearance remains unverified.
 
 Electron window calls and DOM operations were tested with doubles. No native Windows/GPU window test was performed. Windows mouse-event forwarding, desktop transparency, tray behavior, real Ollama/LM Studio inference and precise appearance on user VRMs remain unverified.
 

@@ -4,13 +4,13 @@ const path = require('node:path');
 const DEFAULTS = {
   provider: 'ollama', endpoint: 'http://127.0.0.1:11434', model: '',
   name: 'コンパニオン', persona: 'あなたはデスクトップに住む親しみやすい相棒です。日本語で自然に会話してください。返答は基本的に短く、相手の話をよく聞いてください。',
-  temperature: 0.7, historyTurns: 12, modelPath: '', scale: 1, angle: 0, topmost: true, inputX: null, inputY: null, lipSync: true, softIdle: true, motionStrength: 0.65, touchEnabled: true, clothDrag: true, touchZoneScale: 1, bubbleX: null, bubbleY: null, bubbleFont: 'Yu Gothic UI', bubbleFontSize: 13,
+  temperature: 0.7, historyTurns: 12, modelPath: '', scale: 1, angle: 0, topmost: true, inputX: null, inputY: null, lipSync: true, softIdle: true, motionStrength: 0.65, touchEnabled: true, clothDrag: true, clothReach: .18, clothAngle: 80, touchZoneScale: 1, bubbleX: null, bubbleY: null, bubbleFont: 'Yu Gothic UI', bubbleFontSize: 13,
 };
 function cleanSettings(input = {}) {
   const s = { ...DEFAULTS };
   for (const k of ['provider','endpoint','model','name','persona','modelPath','bubbleFont']) if (typeof input[k] === 'string') s[k] = input[k].slice(0, k === 'persona' ? 12000 : 2000);
   if (!['ollama', 'lmstudio'].includes(s.provider)) throw new Error('接続方式を選んでください。');
-  for (const [k,min,max] of [['temperature',0,2],['historyTurns',1,40],['scale',0.5,10.0],['angle',-180,180],['motionStrength',0,1],['touchZoneScale',.75,1.4],['bubbleFontSize',8,72]]) {
+  for (const [k,min,max] of [['temperature',0,2],['historyTurns',1,40],['scale',0.5,10.0],['angle',-180,180],['motionStrength',0,1],['touchZoneScale',.75,1.4],['bubbleFontSize',8,72],['clothReach',.02,.5],['clothAngle',10,120]]) {
     if (Number.isFinite(Number(input[k]))) s[k] = Math.max(min, Math.min(max, Number(input[k])));
   }
   for(const k of ['inputX','inputY','bubbleX','bubbleY'])if(typeof input[k]==='number'&&Number.isFinite(input[k]))s[k]=Math.round(Math.max(-100000,Math.min(100000,input[k])));

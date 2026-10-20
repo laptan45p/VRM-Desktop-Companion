@@ -11,8 +11,8 @@ function status(id,text,error=false){$(id).textContent=text;$(id).classList.togg
 async function call(promise){const r=await promise;if(!r.ok)throw new Error(r.error);return r.data;}
 function wrap(fn,id='chatStatus'){return async(...args)=>{try{await fn(...args);}catch(e){status(id,e.message,true);}};}
 function selectControlTab(which){const chat=which==='chat';$('chatView').hidden=!chat;$('settingsView').hidden=chat;$('chatTab').classList.toggle('selected',chat);$('settingsTab').classList.toggle('selected',!chat);}
-function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona','bubbleFont'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angle','motionStrength','touchZoneScale','bubbleFontSize'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag'])s[k]=$(k).checked;return s;}
-function fillSettings(s){for(const id of ['provider','endpoint','name','persona','bubbleFont','temperature','historyTurns','scale','angle','motionStrength','touchZoneScale','bubbleFontSize'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag'])$(k).checked=s[k];setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';}
+function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona','bubbleFont'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angle','motionStrength','touchZoneScale','bubbleFontSize','clothAngle'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag'])s[k]=$(k).checked;s.clothReach=Number($('clothReach').value)/100;return s;}
+function fillSettings(s){for(const id of ['provider','endpoint','name','persona','bubbleFont','temperature','historyTurns','scale','angle','motionStrength','touchZoneScale','bubbleFontSize','clothAngle'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag'])$(k).checked=s[k];$('clothReach').value=Math.round(s.clothReach*100);setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';}
 function setModels(models,selected){$('model').replaceChildren();if(!models.length){const o=new Option('モデルがありません','');$('model').add(o);}for(const m of models)$('model').add(new Option(m,m));if(models.includes(selected))$('model').value=selected;}
 function renderHistory(){
  const area=$('history');area.replaceChildren();
@@ -114,7 +114,7 @@ async function loadVRM(announce=false){
  candidate.scene.traverse(o=>{if(o.isMesh)o.frustumCulled=false;});
  cloth?.reset();
  disposeRoot(modelRoot);disposeRoot(demoRoot);demoRoot=null;vrm=candidate;modelRoot=vrm.scene;scene.add(modelRoot);
- rest=window.companionMotion.capturePose(vrm);lips.stop();cloth=new window.companionCloth.ClothDrag(vrm,THREE.Vector3);
+ rest=window.companionMotion.capturePose(vrm);lips.stop();cloth=new window.companionCloth.ClothDrag(vrm,THREE.Vector3,state.settings);
  modelRoot.rotation.y=THREE.MathUtils.degToRad(state.settings.angle);fitModel(modelRoot);
  if(announce)api.modelStatus('準備できたよ。話しかけてね。');
  }catch(e){if(candidate&&candidate!==vrm)VRMUtils.deepDispose(candidate.scene);api.modelStatus('VRMを読み込めませんでした：'+e.message);}
@@ -237,7 +237,8 @@ api.onUpdate(data=>{
   if(data.reaction)reactionMotion.trigger(data.reaction.emotion,performance.now()/1000);
   if(data.speech!==undefined){if(data.speech&&!data.thinking)lips.play(data.speech,performance.now()/1000);else if(!data.speech)lips.stop();}
   if(data.reloadVRM)loadVRM(true);
-  if(data.pass||data.settings&&(before.clothDrag!==state.settings.clothDrag||before.angle!==state.settings.angle||before.scale!==state.settings.scale)){cancelInteraction();cloth?.reset();}
+  if(data.settings)cloth?.configure?.(state.settings);
+  if(data.pass||data.settings&&(before.clothDrag!==state.settings.clothDrag||before.clothReach!==state.settings.clothReach||before.clothAngle!==state.settings.clothAngle||before.angle!==state.settings.angle||before.scale!==state.settings.scale)){cancelInteraction();cloth?.reset();}
   if(renderer&&(before.scale!==state.settings.scale||before.angle!==state.settings.angle))resizeViewport();
  }else if(view==='input'){
   $('inputName').textContent=state.settings.name+'に話しかける';setInputBusy();if(data.focusInput)focusInput();

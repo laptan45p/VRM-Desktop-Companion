@@ -7,11 +7,16 @@
   });return chains;
  }
  class ClothDrag{
-  constructor(vrm,Vector3){
+  constructor(vrm,Vector3,options={}){
    this.vrm=vrm;this.Vector3=Vector3;this.chains=discoverChains(vrm.scene);this.applied=[];this.held=false;this.chain=null;this.delta=new Vector3();this.target=new Vector3();
    const head=vrm.humanoid?.getRawBoneNode('head'),foot=vrm.humanoid?.getRawBoneNode('leftFoot');
    vrm.scene.updateMatrixWorld(true);this.height=head&&foot?head.getWorldPosition(new Vector3()).distanceTo(foot.getWorldPosition(new Vector3()))*1.08:1.7;
-   this.height=Math.max(.001,this.height);
+   this.height=Math.max(.001,this.height);this.configure(options);
+  }
+  configure(options={}){
+   const reach=Number(options.clothReach),angle=Number(options.clothAngle);
+   this.reachRatio=Number.isFinite(reach)?Math.max(.02,Math.min(.5,reach)):.18;
+   this.maxAngle=(Number.isFinite(angle)?Math.max(10,Math.min(120,angle)):80)*Math.PI/180;
   }
   pick(hit){
    if(!this.chains.length)return null;
@@ -36,7 +41,7 @@
     const outward=this.chain.at(-1).getWorldPosition(new this.Vector3()).sub(center);outward.y=0;if(outward.length()<1e-6)outward.set(0,0,1);
     this.target.addScaledVector(outward.normalize(),delta.y*.5);
    }
-   this.target.clampLength(0,this.height*.06);
+   this.target.clampLength(0,this.height*this.reachRatio);
   }
   release(){this.held=false;this.target.set(0,0,0);}
   restore(){const changed=this.applied.length;for(const [bone,q]of this.applied){bone.quaternion.copy(q);bone.updateMatrix();}this.applied=[];if(changed)this.vrm.scene.updateMatrixWorld(true);}
@@ -50,7 +55,7 @@
     const bone=this.chain[i],child=this.chain[i+1],direction=child.position.clone();if(direction.length()<1e-6)continue;
     const world=bone.getWorldPosition(new this.Vector3()).add(this.delta.clone().multiplyScalar(.5));const force=bone.worldToLocal(world);
     const q=bone.quaternion.clone().setFromUnitVectors(direction.clone().normalize(),direction.clone().add(force).normalize()),identity=q.clone().identity(),angle=q.angleTo(identity);
-    if(angle>.5)q.slerp(identity,1-.5/angle);
+    if(angle>this.maxAngle)q.slerp(identity,1-this.maxAngle/angle);
     this.applied.push([bone,bone.quaternion.clone()]);bone.quaternion.multiply(q);
     // VRM spring joints disable matrixAutoUpdate; quaternion changes alone never reach the mesh.
     bone.updateMatrix();bone.updateMatrixWorld(true);

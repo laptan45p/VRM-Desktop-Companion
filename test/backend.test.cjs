@@ -48,3 +48,7 @@ test('touch replies preserve persona and recent context with bounded output on b
   assert.equal(await touchReply({...DEFAULTS,provider,endpoint,model:'local-model',persona:'テストの口調'},history,{region:'butt',gesture:'stroke',emotion:'angry',count:3}),'もう、そこはやめてよ！');assert.equal(JSON.stringify(history),original);
  });
 });
+
+test('cloth reach and angle preserve new defaults and clamp saved settings',()=>{
+ assert.equal(cleanSettings({}).clothReach,.18);assert.equal(cleanSettings({}).clothAngle,80);assert.equal(cleanSettings({clothReach:10,clothAngle:1000}).clothReach,.5);assert.equal(cleanSettings({clothReach:0,clothAngle:0}).clothAngle,10);assert.equal(cleanSettings({clothReach:.4,clothAngle:110}).clothAngle,110);
+});

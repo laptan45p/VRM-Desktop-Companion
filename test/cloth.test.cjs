@@ -31,11 +31,11 @@ test('cloth picking requires skirt skin weights and a hem hit, ignoring torso or
 test('drag moves the hem in rotated/scaled models, stays bounded, and restores without disturbing other chains',()=>{
  for(const scale of [.01,1,10])for(const rotation of [0,Math.PI/2]){
   const {cloth,chains,scene,hit}=fixture(12,5,true,scale,rotation),base=chains.flat().map(b=>b.quaternion.clone());
-  assert.equal(cloth.begin(hit),true);cloth.move(new Vector3(0,100*scale,20*scale));assert.ok(cloth.target.length()<=cloth.height*.060001);assert.ok(cloth.target.y>0);
+  assert.equal(cloth.begin(hit),true);cloth.move(new Vector3(0,100*scale,20*scale));assert.ok(cloth.target.length()<=cloth.height*.180001);assert.ok(cloth.target.y>0);
   for(let i=0;i<60;i++){cloth.restore();cloth.update(1/60);}
   assert.ok(chains[0].some((b,i)=>b.quaternion.angleTo(base[i])>.01));
   for(const chain of chains.slice(1))for(const b of chain)assert.ok(b.quaternion.angleTo(base[chains.flat().indexOf(b)])<1e-6);
-  for(const [bone,q]of cloth.applied)assert.ok(bone.quaternion.angleTo(q)<=.50001);
+  for(const [bone,q]of cloth.applied)assert.ok(bone.quaternion.angleTo(q)<=80*Math.PI/180+.00001);
   cloth.release();for(let i=0;i<120;i++){cloth.restore();cloth.update(1/60);}cloth.restore();scene.updateMatrixWorld(true);
   for(const [i,b]of chains.flat().entries())assert.ok(b.quaternion.angleTo(base[i])<1e-6);
   assert.equal(cloth.held,false);assert.equal(cloth.chain,null);
@@ -73,4 +73,14 @@ test('real VRM spring bones move the skinned cloth vertices and GPU matrices, th
 test('coat chains are supported and models without garment bones safely ignore dragging',()=>{
  const f=fixture(7,3,true);for(const chain of f.chains)for(const b of chain)b.name=b.name.replace('Skirt','coat');const coat=new ClothDrag(f.cloth.vrm,Vector3);assert.equal(coat.chains.length,7);assert.ok(coat.begin(f.hit));coat.move(new Vector3(.01,.01,0));coat.update(.016);coat.reset();
  const empty=new ClothDrag({scene:new Group()},Vector3);for(let i=0;i<120;i++){assert.equal(empty.begin(f.hit),false);empty.move(new Vector3(1,1,1));empty.restore();empty.update(.016);empty.release();}assert.equal(empty.chain,null);assert.equal(empty.applied.length,0);
+});
+
+test('larger default range visibly exceeds the old range and custom limits survive large drags',()=>{
+ const f=fixture(8,4,false),cloth=f.cloth,tip=f.chains[0].at(-1);const start=tip.getWorldPosition(new Vector3());
+ cloth.configure({clothReach:.06,clothAngle:.5*180/Math.PI});cloth.begin(f.hit);cloth.move(new Vector3(1,1,1));for(let i=0;i<60;i++){cloth.restore();cloth.update(1/60);}const oldDistance=tip.getWorldPosition(new Vector3()).distanceTo(start);cloth.reset();
+ cloth.configure();cloth.begin(f.hit);cloth.move(new Vector3(1,1,1));for(let i=0;i<60;i++){cloth.restore();cloth.update(1/60);}assert.ok(tip.getWorldPosition(new Vector3()).distanceTo(start)>oldDistance*1.3);cloth.reset();
+ for(const options of [{clothReach:.02,clothAngle:10},{clothReach:.5,clothAngle:120}]){
+  cloth.configure(options);cloth.begin(f.hit);cloth.move(new Vector3(100,100,100));for(let i=0;i<60;i++){cloth.restore();cloth.update(1/60);}
+  assert.ok(cloth.target.length()<=cloth.height*options.clothReach+1e-8);for(const [bone,q]of cloth.applied)assert.ok(bone.quaternion.angleTo(q)<=options.clothAngle*Math.PI/180+1e-6);cloth.reset();
+ }
 });
