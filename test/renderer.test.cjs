@@ -6,10 +6,10 @@ async function boot(view){
  const ok=data=>Promise.resolve({ok:true,data});
  const api={state:()=>ok({settings,history:[],busy:false,pass:false,dataPath:'/test',speech:''}),onUpdate:fn=>notify=fn,
   action:name=>{calls.push(['action',name]);return ok();},hit:v=>{calls.push(['hit',v]);return ok();},drag:(...a)=>{calls.push(['drag',...a]);return ok();},bubbleSize:h=>{calls.push(['bubbleSize',h]);return ok();},modelStatus:t=>{calls.push(['modelStatus',t]);return ok();},vrm:()=>ok(null),
-  send:async text=>{calls.push(['send',text]);if(failSend)return {ok:false,error:'接続できません'};return {ok:true,data:'返事'};},cancel:()=>ok(),models:()=>ok(['test-local']),save:s=>ok(s)};
+  send:async text=>{calls.push(['send',text]);if(failSend)return {ok:false,error:'接続できません'};return {ok:true,data:'返事'};},cancel:()=>ok(),models:()=>ok(['test-local']),save:s=>{calls.push(['save',s]);return ok(s);}};
  class Renderer{constructor(){this.domElement={};}setClearColor(){}setPixelRatio(){}setSize(){}setAnimationLoop(cb){cb();}render(scene,camera){rendered={scene,camera};}}
  let now=0;const context={THREE:{...THREE,WebGLRenderer:Renderer},GLTFLoader:THREE.GLTFLoader,VRMLoaderPlugin:THREE.VRMLoaderPlugin,VRMUtils:THREE.VRMUtils,
-  window:{companion:api,companionLayout:layout,addEventListener:(k,f)=>listeners[k]=f},document:{body:{className:'',dataset:{}},documentElement:{classList:{add(){}}},getElementById:node,createElement:()=>node('new-'+nodes.size),createTextNode:text=>({textContent:text}),addEventListener:(k,f)=>events[k]=f},location:{search:'?view='+view},URLSearchParams,
+  window:{companion:api,companionLayout:layout,companionMotion:require('../src/motion.cjs'),addEventListener:(k,f)=>listeners[k]=f},document:{body:{className:'',dataset:{}},documentElement:{classList:{add(){}}},getElementById:node,createElement:()=>node('new-'+nodes.size),createTextNode:text=>({textContent:text}),addEventListener:(k,f)=>events[k]=f},location:{search:'?view='+view},URLSearchParams,
   performance:{now:()=>now+=50},devicePixelRatio:1,ResizeObserver:class{constructor(fn){this.fn=fn;}observe(){}},requestAnimationFrame:fn=>fn(),Option:class{constructor(text,value){this.text=text;this.value=value;}},console,confirm:()=>true};
  const code=fs.readFileSync(path.join(__dirname,'../src/renderer.js'),'utf8').split('\n').filter(l=>!l.startsWith('import ')).join('\n');
  vm.runInNewContext(code,context);await new Promise(r=>setImmediate(r));
@@ -36,4 +36,11 @@ test('character mesh picking separates clicks, background, context menu and drag
  el.oncontextmenu(event());assert.equal(calls.at(-1)[1],'menu');
  const menuCount=calls.filter(c=>c[1]==='menu').length;el.oncontextmenu(event({clientX:0,clientY:0}));assert.equal(calls.filter(c=>c[1]==='menu').length,menuCount);
  listeners.mousemove(event());listeners.mousemove(event({clientX:0,clientY:0}));assert.equal(calls.at(-1)[0],'hit');assert.equal(calls.at(-1)[1],false);
+});
+
+test('motion controls load saved values and persist toggles and strength',async()=>{
+ const {node,calls}=await boot('control');assert.equal(node('lipSync').checked,true);assert.equal(node('softIdle').checked,true);
+ node('lipSync').checked=false;node('softIdle').checked=false;node('motionStrength').value='0.25';
+ await node('settingsForm').onsubmit({preventDefault(){}});const saved=calls.find(c=>c[0]==='save')[1];assert.equal(saved.lipSync,false);assert.equal(saved.softIdle,false);assert.equal(saved.motionStrength,.25);
+ node('testMotion').onclick();await new Promise(r=>setImmediate(r));assert.ok(calls.some(c=>c[0]==='action'&&c[1]==='test-motion'));
 });

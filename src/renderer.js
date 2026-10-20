@@ -11,8 +11,8 @@ function status(id,text,error=false){$(id).textContent=text;$(id).classList.togg
 async function call(promise){const r=await promise;if(!r.ok)throw new Error(r.error);return r.data;}
 function wrap(fn,id='chatStatus'){return async(...args)=>{try{await fn(...args);}catch(e){status(id,e.message,true);}};}
 function selectControlTab(which){const chat=which==='chat';$('chatView').hidden=!chat;$('settingsView').hidden=chat;$('chatTab').classList.toggle('selected',chat);$('settingsTab').classList.toggle('selected',!chat);}
-function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angle'])s[id]=Number($(id).value);s.topmost=$('topmost').checked;return s;}
-function fillSettings(s){for(const id of ['provider','endpoint','name','persona','temperature','historyTurns','scale','angle'])$(id).value=s[id];$('topmost').checked=s.topmost;setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';}
+function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angle','motionStrength'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle'])s[k]=$(k).checked;return s;}
+function fillSettings(s){for(const id of ['provider','endpoint','name','persona','temperature','historyTurns','scale','angle','motionStrength'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle'])$(k).checked=s[k];setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';}
 function setModels(models,selected){$('model').replaceChildren();if(!models.length){const o=new Option('モデルがありません','');$('model').add(o);}for(const m of models)$('model').add(new Option(m,m));if(models.includes(selected))$('model').value=selected;}
 function renderHistory(){
  const area=$('history');area.replaceChildren();
@@ -42,11 +42,13 @@ async function initControl(){
  $('clear').onclick=wrap(async()=>{if(confirm('このキャラクターとの会話履歴を削除しますか？'))await call(api.clear());});
  $('resetPosition').onclick=wrap(async()=>{await call(api.action('reset'));});
  $('quit').onclick=()=>api.action('quit');
+ $('testMotion').onclick=wrap(async()=>{await call(api.action('test-motion'));});
  if(state.startupError)status('chatStatus',state.startupError,true);
  renderHistory();updateBusy(state.busy);selectControlTab('settings');
 }
 let scene,camera,renderer,vrm,demoRoot,modelRoot,clock,elapsed=0,loadId=0,moodUntil=0,blinkAt=2,blinkStart=-10;
-const rest=new Map();
+let rest=new Map();
+const lips=new window.companionMotion.LipMotion(),idle=new window.companionMotion.SoftIdle();
 function createDemo(){
  const g=new THREE.Group();
  const mat=new THREE.MeshStandardMaterial({color:0x8eb5a2,roughness:.8});
@@ -106,7 +108,7 @@ async function loadVRM(announce=false){
  // Disable static bounds culling on animated meshes.
  candidate.scene.traverse(o=>{if(o.isMesh)o.frustumCulled=false;});
  disposeRoot(modelRoot);disposeRoot(demoRoot);demoRoot=null;vrm=candidate;modelRoot=vrm.scene;scene.add(modelRoot);
- rest.clear();for(const name of ['spine','neck','head']){const b=h.getNormalizedBoneNode(name);if(b)rest.set(name,b.rotation.clone());}
+ rest=window.companionMotion.capturePose(vrm);lips.stop();
  modelRoot.rotation.y=THREE.MathUtils.degToRad(state.settings.angle);fitModel(modelRoot);
  if(announce)api.modelStatus('準備できたよ。話しかけてね。');
  }catch(e){if(candidate&&candidate!==vrm)VRMUtils.deepDispose(candidate.scene);api.modelStatus('VRMを読み込めませんでした：'+e.message);}
@@ -124,13 +126,14 @@ function initMascot(){
  renderer.setAnimationLoop(()=>{
  const dt=Math.min(clock.getDelta(),.05);elapsed+=dt;
  const root=vrm?.scene||demoRoot;
- if(root)root.rotation.y=THREE.MathUtils.degToRad(state.settings.angle)+Math.sin(elapsed*.4)*.025;
- if(demoRoot){demoRoot.position.y=Math.sin(elapsed*1.8)*.018;}
+ if(root)root.rotation.y=THREE.MathUtils.degToRad(state.settings.angle);
+ if(demoRoot){demoRoot.position.y=state.settings.softIdle?Math.sin(elapsed*1.8)*.018*state.settings.motionStrength:0;}
  if(vrm){
- for(const [name,base]of rest){const b=vrm.humanoid.getNormalizedBoneNode(name);b.rotation.copy(base);if(name==='spine')b.rotation.x+=Math.sin(elapsed*1.7)*.012;if(name==='head'){b.rotation.y+=Math.sin(elapsed*.55)*.04;b.rotation.z+=Math.sin(elapsed*.7)*.015;}}
+ idle.update(vrm,rest,elapsed,dt,{enabled:state.settings.softIdle,strength:state.settings.motionStrength,thinking:state.busy});
+ const talking=lips.update(vrm,performance.now()/1000,dt,state.settings.lipSync);
  if(elapsed>=blinkAt){blinkStart=elapsed;blinkAt=elapsed+2.5+Math.random()*3;}
  const p=(elapsed-blinkStart)/.18;const blink=p>=0&&p<1?Math.sin(p*Math.PI):0;
- vrm.expressionManager?.setValue('blink',blink);vrm.expressionManager?.setValue('happy',elapsed < moodUntil ? .35 : 0);
+ vrm.expressionManager?.setValue('blink',blink);vrm.expressionManager?.setValue('happy',elapsed<moodUntil?(talking?0:.35):0);
  vrm.update(dt);
  }
  renderer.render(scene,camera);
@@ -196,6 +199,7 @@ api.onUpdate(data=>{
  if(!state)return;const before=state.settings;state={...state,...data};
  if(isMascot){
   if(data.reply||data.greeting)moodUntil=elapsed+4;
+  if(data.speech!==undefined){if(data.speech&&!data.thinking)lips.play(data.speech,performance.now()/1000);else if(!data.speech)lips.stop();}
   if(data.reloadVRM)loadVRM(true);
   if(renderer&&(before.scale!==state.settings.scale||before.angle!==state.settings.angle))resizeViewport();
  }else if(view==='input'){

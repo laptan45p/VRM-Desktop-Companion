@@ -32,10 +32,10 @@ function applyHit(){if(mascot&&!mascot.isDestroyed())mascot.setIgnoreMouseEvents
 function setPass(value){pass=!!value;drag=null;applyHit();broadcast();}
 function resetMascot(){resizeMascot(true);mascot.show();setPass(false);}
 function hideMascot(){mascot.hide();bubble.hide();input.hide();drag=null;applyHit();}
-function hideSpeech(){clearTimeout(speechTimer);speechTimer=null;speech='';bubble.hide();}
+function hideSpeech(){clearTimeout(speechTimer);speechTimer=null;speech='';bubble.hide();broadcast({speech:''});}
 function speak(text,{thinking=false}={}){
  clearTimeout(speechTimer);speech=String(text).slice(0,12000);broadcast({speech,thinking});positionPopups();
- if(speech){bubble.showInactive();if(!thinking){speechTimer=setTimeout(()=>{speechTimer=null;speech='';bubble.hide();},Math.max(7000,Math.min(45000,speech.length*110)));speechTimer.unref?.();}}
+ if(speech){bubble.showInactive();if(!thinking){speechTimer=setTimeout(()=>{speechTimer=null;speech='';bubble.hide();broadcast({speech:''});},Math.max(7000,Math.min(45000,speech.length*110)));speechTimer.unref?.();}}
  else bubble.hide();
 }
 function showControl(tab='settings'){control.show();control.webContents.send('update',{controlTab:tab});control.focus();}
@@ -120,7 +120,8 @@ handle('chat',async text=>{
 });
 handle('cancel',()=>{active?.abort();});handle('clear',()=>{if(active)throw new Error('生成を停止してください。');store.data.history=[];store.save();broadcast();});
 handle('action',name=>{
- if(name==='control'||name==='settings')showControl('settings');else if(name==='history')showControl('chat');else if(name==='talk')showInput();
+ if(name==='test-motion'){speak('こんにちは。こんな感じでお話しするよ。よろしくね。');broadcast({greeting:true});}
+ else if(name==='control'||name==='settings')showControl('settings');else if(name==='history')showControl('chat');else if(name==='talk')showInput();
  else if(name==='menu')menu().popup({window:mascot});else if(name==='pass')setPass(!pass);else if(name==='hide')hideMascot();
  else if(name==='close-input')input.hide();else if(name==='close-bubble')hideSpeech();else if(name==='quit')app.quit();else if(name==='reset')resetMascot();
 });
