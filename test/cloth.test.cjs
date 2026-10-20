@@ -69,3 +69,8 @@ test('real VRM spring bones move the skinned cloth vertices and GPU matrices, th
   assert.ok(mesh.getVertexPosition(0,new Vector3()).distanceTo(baseline)<1e-5);assert.equal(chains[0][0].matrixAutoUpdate,false);geometry.dispose();mesh.skeleton.dispose();
  }
 });
+
+test('coat chains are supported and models without garment bones safely ignore dragging',()=>{
+ const f=fixture(7,3,true);for(const chain of f.chains)for(const b of chain)b.name=b.name.replace('Skirt','coat');const coat=new ClothDrag(f.cloth.vrm,Vector3);assert.equal(coat.chains.length,7);assert.ok(coat.begin(f.hit));coat.move(new Vector3(.01,.01,0));coat.update(.016);coat.reset();
+ const empty=new ClothDrag({scene:new Group()},Vector3);for(let i=0;i<120;i++){assert.equal(empty.begin(f.hit),false);empty.move(new Vector3(1,1,1));empty.restore();empty.update(.016);empty.release();}assert.equal(empty.chain,null);assert.equal(empty.applied.length,0);
+});

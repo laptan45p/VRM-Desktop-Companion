@@ -1,6 +1,6 @@
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.companionCloth=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
  'use strict';
- const isCloth=b=>b?.isBone&&/skirt|スカート/i.test(b.name||'');
+ const isCloth=b=>b?.isBone&&/skirt|スカート|coat|コート|jacket|ジャケット/i.test(b.name||'');
  function discoverChains(scene){
   const chains=[];scene.traverse(b=>{if(!isCloth(b)||isCloth(b.parent))return;
    const walk=(node,path)=>{const children=node.children.filter(isCloth);if(!children.length){if(path.length>=2)chains.push(path);return;}for(const c of children)walk(c,[...path,c]);};walk(b,[b]);
@@ -14,6 +14,7 @@
    this.height=Math.max(.001,this.height);
   }
   pick(hit){
+   if(!this.chains.length)return null;
    const mesh=hit?.object,indices=mesh?.geometry?.attributes?.skinIndex,weights=mesh?.geometry?.attributes?.skinWeight;
    if(!mesh?.isSkinnedMesh||!indices||!weights||!hit.face)return null;
    let best=null,distance=this.height*.08;

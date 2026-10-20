@@ -49,6 +49,7 @@ async function initControl(){
 }
 let scene,camera,renderer,vrm,demoRoot,modelRoot,clock,elapsed=0,loadId=0,moodUntil=0,blinkAt=2,blinkStart=-10;
 let rest=new Map(),cloth=null,cancelInteraction=()=>{};
+const picking=new window.companionPicking.MeshPicking(THREE.Vector3);
 const lips=new window.companionMotion.LipMotion(),idle=new window.companionMotion.SoftIdle(),reactionMotion=new window.companionMotion.ReactionMotion();
 function createDemo(){
  const g=new THREE.Group();
@@ -174,16 +175,16 @@ function initSpeech(){
  updateSpeech(state.speech||'');
 }
 function initCharacterMouse(){
- const el=$('avatar'),cast={ray:new THREE.Ray(),near:0,far:Infinity,camera:null},point=new THREE.Vector3();let over=false,down=null,lastCheck=0;
+ const el=$('avatar'),cast={ray:new THREE.Ray(),near:0,far:Infinity,camera:null},point=new THREE.Vector3();let over=false,down=null,lastCheck=-Infinity;
  function hit(e){
   if(!renderer||!camera)return false;const rect=el.getBoundingClientRect();
   point.set((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1,.5);
   const root=vrm?.scene||demoRoot;if(!root)return false;
   camera.updateMatrixWorld();root.updateMatrixWorld(true);cast.camera=camera;cast.ray.origin.setFromMatrixPosition(camera.matrixWorld);cast.ray.direction.copy(point).unproject(camera).sub(cast.ray.origin).normalize();
-  const hits=[];root.traverseVisible(node=>{if(node.isMesh)node.raycast(cast,hits);});
+  const hits=[];picking.intersect(root,cast,hits);
   return hits.sort((a,b)=>a.distance-b.distance).find(h=>{let p=h.object;while(p){if(!p.visible)return false;p=p.parent;}const m=Array.isArray(h.object.material)?h.object.material[h.face?.materialIndex||0]:h.object.material;return !m||m.visible!==false&&m.opacity!==0;});
  }
- function hover(e){if(down)return;const now=performance.now();if(now-lastCheck<35)return;lastCheck=now;const value=!!hit(e);if(value!==over){over=value;api.hit(value);}}
+ function hover(e){if(down)return;const now=performance.now();if(now-lastCheck<60)return;lastCheck=now;const value=!!hit(e);if(value!==over){over=value;api.hit(value);}}
  window.addEventListener('mousemove',hover);
  document.addEventListener('mouseleave',()=>{if(!down){over=false;api.hit(false);}});
  function regionAt(hit){

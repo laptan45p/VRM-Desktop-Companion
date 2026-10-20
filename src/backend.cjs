@@ -64,7 +64,7 @@ async function chat(settings, history, userText, signal, {maxTokens=512,timeoutM
   return answer.trim();
 }
 async function touchReply(settings,history,reaction,signal){
- const regions={head:'頭・顔',chest:'胸部',butt:'臀部',cloth:'スカートの裾'},gestures={poke:'軽くつつかれた',stroke:'撫でられた'},emotions={shy:'照れ・恥ずかしさ',surprised:'驚き',angry:'怒り'};
+ const regions={head:'頭・顔',chest:'胸部',butt:'臀部',cloth:'衣服の裾'},gestures={poke:'軽くつつかれた',stroke:'撫でられた'},emotions={shy:'照れ・恥ずかしさ',surprised:'驚き',angry:'怒り'};
  if(!regions[reaction.region]||!gestures[reaction.gesture]||!emotions[reaction.emotion])throw new Error('反応の指定が不正です。');
  const systemExtra='デスクトップ上の触れ合いへの短い反応を演じてください。設定された性格・口調と直前の会話を踏まえ、指定の感情を声色が伝わる自然な言葉で表現してください。反応のセリフだけを日本語1〜2文、70文字以内で返してください。解説・ト書き・話者ラベルは不要です。性的な描写はせず、怒りの指定では嫌だという意思を保ち、触るよう誘わないでください。';
  const prompt=`【今起きた操作】${regions[reaction.region]}を${reaction.region==='cloth'?'軽く引っ張られた':gestures[reaction.gesture]}。\n【感情】${emotions[reaction.emotion]}\n【胸部・臀部への連続操作回数】${reaction.count}回\nこの瞬間のあなたの短い反応は？`;

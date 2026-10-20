@@ -1,6 +1,6 @@
-# Validation — 0.1.9
+# Validation — 0.1.10
 
-47 tests passed with the supplied runtime:
+51 tests passed with the supplied runtime:
 
 - Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
 - VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
@@ -33,6 +33,12 @@ Cloth drag coverage:
 - Renderer gesture arbitration, upward motion, pointer cancellation and Shift-drag; cloth toggle and LLM reaction routing.
 - Regression test reproduces the former frozen-cloth failure with actual VRMSpringBoneJoint/Manager and SkinnedMesh: skin vertices and GPU bone matrices must change after dragging and restore after release, while matrixAutoUpdate remains false.
 - Read-only inspection of two supplied VRMs confirmed 8 four-node and 12 five-node chains, a selectable weighted hem vertex, bounded movement and reset using reconstructed scene transforms. Additional 0.1.9 verification loaded both supplied models with GLTFLoader/VRMLoaderPlugin, keeping geometry, skins and spring definitions while omitting textures for headless execution. Under the same gesture, a selected hem vertex moved about 0.0502 and 0.0222 model units with the fix (previous code showed only about 0.0017 and 0.0022 units of incidental spring movement). These measurements verify skinning rather than quaternion changes alone. Textured GPU rendering and native desktop gestures on these models were not verified. The supplied models are not included in the repository or release.
+
+0.1.10 coverage:
+- Cached picking matches the original Three.js raycast with relative/absolute morph targets, active negative weights, and changing bone poses/expressions. Each skinned vertex is evaluated once per query; original mesh methods are restored even when raycasting throws.
+- Seven coat chains are detected; missing garment chains safely ignore repeated drag attempts.
+- The third supplied VRM was loaded headlessly with its actual geometry, skins, humanoid and spring definitions, omitting textures. With the fix, a selected coat hem vertex moved about 0.0183 model units and returned to its original position after release.
+- Headless profiling of that model measured original repeated raycasts around 78–120ms and optimized warmed queries around 36–40ms. These timings are environment-specific, not native desktop freeze reproduction. Exact native freezing remains unconfirmed.
 
 Electron window calls and DOM operations were tested with doubles. No native Windows/GPU window test was performed. Windows mouse-event forwarding, desktop transparency, tray behavior, real Ollama/LM Studio inference and precise appearance on user VRMs remain unverified.
 
