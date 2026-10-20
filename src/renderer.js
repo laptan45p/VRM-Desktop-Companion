@@ -11,8 +11,8 @@ function status(id,text,error=false){$(id).textContent=text;$(id).classList.togg
 async function call(promise){const r=await promise;if(!r.ok)throw new Error(r.error);return r.data;}
 function wrap(fn,id='chatStatus'){return async(...args)=>{try{await fn(...args);}catch(e){status(id,e.message,true);}};}
 function selectControlTab(which){const chat=which==='chat';$('chatView').hidden=!chat;$('settingsView').hidden=chat;$('chatTab').classList.toggle('selected',chat);$('settingsTab').classList.toggle('selected',!chat);}
-function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angle','motionStrength'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle'])s[k]=$(k).checked;return s;}
-function fillSettings(s){for(const id of ['provider','endpoint','name','persona','temperature','historyTurns','scale','angle','motionStrength'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle'])$(k).checked=s[k];setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';}
+function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona','bubbleFont'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angle','motionStrength','touchZoneScale','bubbleFontSize'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle','touchEnabled'])s[k]=$(k).checked;return s;}
+function fillSettings(s){for(const id of ['provider','endpoint','name','persona','bubbleFont','temperature','historyTurns','scale','angle','motionStrength','touchZoneScale','bubbleFontSize'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle','touchEnabled'])$(k).checked=s[k];setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';}
 function setModels(models,selected){$('model').replaceChildren();if(!models.length){const o=new Option('モデルがありません','');$('model').add(o);}for(const m of models)$('model').add(new Option(m,m));if(models.includes(selected))$('model').value=selected;}
 function renderHistory(){
  const area=$('history');area.replaceChildren();
@@ -41,6 +41,7 @@ async function initControl(){
  $('stop').onclick=wrap(async()=>{await call(api.cancel());});
  $('clear').onclick=wrap(async()=>{if(confirm('このキャラクターとの会話履歴を削除しますか？'))await call(api.clear());});
  $('resetPosition').onclick=wrap(async()=>{await call(api.action('reset'));});
+ $('resetBubble').onclick=wrap(async()=>{await call(api.action('reset-bubble'));});
  $('quit').onclick=()=>api.action('quit');
  $('testMotion').onclick=wrap(async()=>{await call(api.action('test-motion'));});
  if(state.startupError)status('chatStatus',state.startupError,true);
@@ -48,7 +49,7 @@ async function initControl(){
 }
 let scene,camera,renderer,vrm,demoRoot,modelRoot,clock,elapsed=0,loadId=0,moodUntil=0,blinkAt=2,blinkStart=-10;
 let rest=new Map();
-const lips=new window.companionMotion.LipMotion(),idle=new window.companionMotion.SoftIdle();
+const lips=new window.companionMotion.LipMotion(),idle=new window.companionMotion.SoftIdle(),reactionMotion=new window.companionMotion.ReactionMotion();
 function createDemo(){
  const g=new THREE.Group();
  const mat=new THREE.MeshStandardMaterial({color:0x8eb5a2,roughness:.8});
@@ -134,6 +135,7 @@ function initMascot(){
  if(elapsed>=blinkAt){blinkStart=elapsed;blinkAt=elapsed+2.5+Math.random()*3;}
  const p=(elapsed-blinkStart)/.18;const blink=p>=0&&p<1?Math.sin(p*Math.PI):0;
  vrm.expressionManager?.setValue('blink',blink);vrm.expressionManager?.setValue('happy',elapsed<moodUntil?(talking?0:.35):0);
+ reactionMotion.update(vrm,performance.now()/1000);
  vrm.update(dt);
  }
  renderer.render(scene,camera);
@@ -154,6 +156,8 @@ function initInput(){
  window.addEventListener('focus',focusInput);
 }
 function updateSpeech(text){
+ $('speechText').style.fontFamily=JSON.stringify(state.settings.bubbleFont||'Yu Gothic UI')+', Meiryo, system-ui, sans-serif';
+ $('speechText').style.fontSize=state.settings.bubbleFontSize+'px';
  $('speechName').textContent=state.settings.name;
  if(text!==undefined)$('speechText').textContent=text;
  requestAnimationFrame(()=>api.bubbleSize(Math.ceil($('speechCard').getBoundingClientRect().height)+24));
@@ -171,24 +175,40 @@ function initCharacterMouse(){
   const root=vrm?.scene||demoRoot;if(!root)return false;
   camera.updateMatrixWorld();root.updateMatrixWorld(true);cast.camera=camera;cast.ray.origin.setFromMatrixPosition(camera.matrixWorld);cast.ray.direction.copy(point).unproject(camera).sub(cast.ray.origin).normalize();
   const hits=[];root.traverseVisible(node=>{if(node.isMesh)node.raycast(cast,hits);});
-  return hits.some(h=>{let p=h.object;while(p){if(!p.visible)return false;p=p.parent;}const m=Array.isArray(h.object.material)?h.object.material[h.face?.materialIndex||0]:h.object.material;return !m||m.visible!==false&&m.opacity!==0;});
+  return hits.sort((a,b)=>a.distance-b.distance).find(h=>{let p=h.object;while(p){if(!p.visible)return false;p=p.parent;}const m=Array.isArray(h.object.material)?h.object.material[h.face?.materialIndex||0]:h.object.material;return !m||m.visible!==false&&m.opacity!==0;});
  }
- function hover(e){if(down)return;const now=performance.now();if(now-lastCheck<35)return;lastCheck=now;const value=hit(e);if(value!==over){over=value;api.hit(value);}}
+ function hover(e){if(down)return;const now=performance.now();if(now-lastCheck<35)return;lastCheck=now;const value=!!hit(e);if(value!==over){over=value;api.hit(value);}}
  window.addEventListener('mousemove',hover);
  document.addEventListener('mouseleave',()=>{if(!down){over=false;api.hit(false);}});
+ function regionAt(hit){
+  if(!vrm||!state.settings.touchEnabled)return null;
+  const joints={};for(const key of ['head','hips','chest','leftUpperArm','rightUpperArm','leftFoot','rightFoot']){
+   const bone=vrm.humanoid.getRawBoneNode(key);if(bone)joints[key]=bone.getWorldPosition(new THREE.Vector3());
+  }
+  return window.companionInteraction.classifyPoint(hit.point,joints,state.settings.touchZoneScale);
+ }
  el.onpointerdown=e=>{
-  if(e.button!==0||state.pass||!hit(e))return;
-  e.preventDefault();el.setPointerCapture(e.pointerId);down={x:e.screenX,y:e.screenY,moved:false};api.hit(true);
+  if(down||e.button!==0||e.isPrimary===false||state.pass)return;const target=hit(e);if(!target)return;
+  e.preventDefault();el.setPointerCapture(e.pointerId);down={id:e.pointerId,x:e.screenX,y:e.screenY,lastX:e.screenX,lastY:e.screenY,path:0,max:0,start:performance.now(),region:e.shiftKey?null:regionAt(target),moved:false};api.hit(true);
  };
+ function track(e){
+  down.path+=Math.hypot(e.screenX-down.lastX,e.screenY-down.lastY);down.lastX=e.screenX;down.lastY=e.screenY;
+  down.max=Math.max(down.max,Math.hypot(e.screenX-down.x,e.screenY-down.y));
+ }
  el.onpointermove=e=>{
-  if(!down)return;const d=Math.hypot(e.screenX-down.x,e.screenY-down.y);
-  if(!down.moved&&d>6){down.moved=true;api.drag('start',down.x,down.y);}
+  if(!down||e.pointerId!==down.id)return;track(e);
+  if(down.region)return;
+  if(!down.moved&&down.max>6){down.moved=true;api.drag('start',down.x,down.y);}
   if(down.moved)api.drag('move',e.screenX,e.screenY);
  };
  el.onpointerup=e=>{
-  if(!down)return;const previous=down;down=null;
+  if(!down||e.pointerId!==down.id)return;track(e);const previous=down;down=null;
   if(el.hasPointerCapture(e.pointerId))el.releasePointerCapture(e.pointerId);
-  if(previous.moved)api.drag('end',e.screenX,e.screenY);else api.action('talk');
+  if(previous.region){
+   const target=hit(e),region=target&&regionAt(target);
+   // A gesture must finish on its initial region; cancelled swipes never count.
+   if(!state.pass&&region===previous.region){const gesture=window.companionInteraction.gestureKind(previous.path,performance.now()-previous.start);if(gesture)api.touch(previous.region,gesture);}
+  }else if(previous.moved)api.drag('end',e.screenX,e.screenY);else api.action('talk');
  };
  function cancel(){if(down){down=null;api.drag('end',0,0);}over=false;api.hit(false);}
  el.onpointercancel=cancel;el.onlostpointercapture=()=>{if(down)cancel();};window.addEventListener('blur',cancel);
@@ -199,6 +219,7 @@ api.onUpdate(data=>{
  if(!state)return;const before=state.settings;state={...state,...data};
  if(isMascot){
   if(data.reply||data.greeting)moodUntil=elapsed+4;
+  if(data.reaction)reactionMotion.trigger(data.reaction.emotion,performance.now()/1000);
   if(data.speech!==undefined){if(data.speech&&!data.thinking)lips.play(data.speech,performance.now()/1000);else if(!data.speech)lips.stop();}
   if(data.reloadVRM)loadVRM(true);
   if(renderer&&(before.scale!==state.settings.scale||before.angle!==state.settings.angle))resizeViewport();

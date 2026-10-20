@@ -1,4 +1,6 @@
 'use strict';
+const {ReactionCounter}=require('./interaction.cjs');
+const reactions=new ReactionCounter();
 const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,screen}=require('electron');
 const fs=require('node:fs/promises'),path=require('node:path');
 const {mascotBounds,popupBounds,restoreInputBounds}=require('./layout.cjs');
@@ -11,17 +13,16 @@ function broadcast(extra={}){for(const w of allWindows())w.webContents.send('upd
 function area(){return screen.getDisplayMatching(mascot.getBounds()).workArea;}
 function positionPopups(){
  if(!mascot)return;const r=area(),m=mascot.getBounds();
- if(bubble&&!bubble.isDestroyed()){const b=bubble.getBounds(),bounds=popupBounds(m,b.width,b.height,r,'bubble');bubble.setBounds(bounds,false);bubble.webContents.send('update',{bubbleSide:bounds.x<m.x?'left':'right'});}
+ if(bubble&&!bubble.isDestroyed()){const b=bubble.getBounds();bubble.webContents.send('update',{bubbleSide:b.x+b.width/2<m.x+m.width/2?'left':'right'});}
 
 }
 function inputAreas(){return screen.getAllDisplays().map(d=>d.workArea);}
-function rememberInput(){
- const b=input.getBounds();store.data.settings.inputX=b.x;store.data.settings.inputY=b.y;
- clearTimeout(inputSaveTimer);inputSaveTimer=setTimeout(()=>{inputSaveTimer=null;try{store.save();}catch(e){console.error('会話窓の位置を保存できません:',e.message);}},200);inputSaveTimer.unref?.();
+function rememberPosition(window,prefix){
+ const b=window.getBounds();store.data.settings[prefix+'X']=b.x;store.data.settings[prefix+'Y']=b.y;
+ clearTimeout(inputSaveTimer);inputSaveTimer=setTimeout(()=>{inputSaveTimer=null;try{store.save();}catch(e){console.error('ウィンドウの位置を保存できません:',e.message);}},200);inputSaveTimer.unref?.();
 }
 function recoverInput(){
- const b=input.getBounds(),next=restoreInputBounds({x:b.x,y:b.y},b,inputAreas());
- if(next.x!==b.x||next.y!==b.y)input.setBounds(next,false);
+ for(const w of [input,bubble]){const b=w.getBounds(),next=restoreInputBounds({x:b.x,y:b.y},b,inputAreas());if(next.x!==b.x||next.y!==b.y)w.setBounds(next,false);}
 }
 function resizeMascot(reset=false){
  if(!mascot||mascot.isDestroyed())return;
@@ -40,6 +41,7 @@ function speak(text,{thinking=false}={}){
 }
 function showControl(tab='settings'){control.show();control.webContents.send('update',{controlTab:tab});control.focus();}
 function showInput(){
+ reactions.reset();
  mascot.show();positionPopups();speak(active?'ちょっと待ってね、考え中だよ。':'どうしたの？',{thinking:!!active});
  broadcast({greeting:true});input.show();input.focus();input.webContents.send('update',{focusInput:true});
 }
@@ -71,14 +73,17 @@ if(gotLock)app.whenReady().then(async()=>{
  const inputInitial=popupBounds(mascot.getBounds(),390,224,r,'input');
  const inputLocation=restoreInputBounds({x:store.data.settings.inputX,y:store.data.settings.inputY},inputInitial,inputAreas());
  input=new BrowserWindow({...inputLocation,minWidth:320,minHeight:190,show:false,resizable:false,autoHideMenuBar:true,title:'話しかける',alwaysOnTop:store.data.settings.topmost,skipTaskbar:true,backgroundColor:'#f7f5ee',webPreferences});
- bubble=new BrowserWindow({width:320,height:160,show:false,transparent:true,frame:false,resizable:false,hasShadow:false,alwaysOnTop:store.data.settings.topmost,skipTaskbar:true,backgroundColor:'#00000000',webPreferences});
+ const bubbleInitial=popupBounds(mascot.getBounds(),320,160,r,'bubble');
+ const bubbleLocation=restoreInputBounds({x:store.data.settings.bubbleX,y:store.data.settings.bubbleY},bubbleInitial,inputAreas());
+ bubble=new BrowserWindow({...bubbleLocation,show:false,transparent:true,frame:false,resizable:false,hasShadow:false,alwaysOnTop:store.data.settings.topmost,skipTaskbar:true,backgroundColor:'#00000000',webPreferences});
  for(const w of allWindows()){w.webContents.setWindowOpenHandler(()=>({action:'deny'}));w.webContents.on('will-navigate',e=>e.preventDefault());}
  control.webContents.session.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*','ws://*/*','wss://*/*']},(_d,cb)=>cb({cancel:true}));
  control.webContents.session.setPermissionRequestHandler((_wc,_permission,cb)=>cb(false));
  await Promise.all([control.loadFile(path.join(__dirname,'index.html'),{query:{view:'control'}}),mascot.loadFile(path.join(__dirname,'index.html'),{query:{view:'mascot'}}),input.loadFile(path.join(__dirname,'index.html'),{query:{view:'input'}}),bubble.loadFile(path.join(__dirname,'index.html'),{query:{view:'bubble'}})]);
  for(const w of [control,input,bubble])w.on('close',e=>{if(!app.isQuitting){e.preventDefault();w.hide();}});
  mascot.on('close',e=>{if(!app.isQuitting){e.preventDefault();hideMascot();}});
- input.on('move',rememberInput);
+ input.on('move',()=>rememberPosition(input,'input'));
+ bubble.on('move',()=>{rememberPosition(bubble,'bubble');positionPopups();});
  mascot.on('move',positionPopups);
  screen.on('display-metrics-changed',()=>{resizeMascot();recoverInput();});screen.on('display-removed',()=>{resizeMascot();recoverInput();});
  tray=new Tray(nativeImage.createFromPath(path.join(__dirname,'tray.png')));tray.setToolTip('VRM Desktop Companion');
@@ -94,11 +99,17 @@ function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=
 handle('state',()=>({...store.data,busy:!!active,pass,startupError,dataPath:store.file,speech}));
 handle('save',settings=>{
  if(active)throw new Error('生成を停止してから設定を変更してください。');
- store.data.settings=cleanSettings({...settings,modelPath:store.data.settings.modelPath,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY});store.save();
+ store.data.settings=cleanSettings({...settings,modelPath:store.data.settings.modelPath,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY,bubbleX:store.data.settings.bubbleX,bubbleY:store.data.settings.bubbleY});store.save();
  for(const w of [mascot,input,bubble])w.setAlwaysOnTop(store.data.settings.topmost);resizeMascot();broadcast();return store.data.settings;
 });
 handle('models',s=>listModels(cleanSettings(s)));handle('choose-vrm',selectVRM);
 handle('vrm',async()=>{const p=store.data.settings.modelPath;if(!p)return null;if((await fs.stat(p)).size>300*1024*1024)throw new Error('VRMが300MBを超えています。');return new Uint8Array(await fs.readFile(p));});
+handle('touch',(region,gesture)=>{
+ if(pass||!store.data.settings.touchEnabled)return;
+ const reaction=reactions.perform(region,gesture,Date.now());if(!reaction)return;
+ const text=reaction.emotion==='angry'?'もう、そこは触らないで！':region!=='head'?'えっ…そこは、恥ずかしいよ。':gesture==='stroke'?'えへへ…くすぐったいよ。':'わっ、びっくりした！';
+ speak(text);broadcast({reaction});
+},()=>mascot);
 handle('hit',value=>{hovered=!!value;applyHit();},()=>mascot);
 handle('drag',(phase,x,y)=>{
  if(pass)return;if(!['start','move','end'].includes(phase)||!Number.isFinite(x)||!Number.isFinite(y))throw new Error('移動座標が不正です。');
@@ -121,6 +132,7 @@ handle('chat',async text=>{
 handle('cancel',()=>{active?.abort();});handle('clear',()=>{if(active)throw new Error('生成を停止してください。');store.data.history=[];store.save();broadcast();});
 handle('action',name=>{
  if(name==='test-motion'){speak('こんにちは。こんな感じでお話しするよ。よろしくね。');broadcast({greeting:true});}
+ else if(name==='reset-bubble'){const b=bubble.getBounds();bubble.setBounds(popupBounds(mascot.getBounds(),b.width,b.height,area(),'bubble'),false);rememberPosition(bubble,'bubble');positionPopups();}
  else if(name==='control'||name==='settings')showControl('settings');else if(name==='history')showControl('chat');else if(name==='talk')showInput();
  else if(name==='menu')menu().popup({window:mascot});else if(name==='pass')setPass(!pass);else if(name==='hide')hideMascot();
  else if(name==='close-input')input.hide();else if(name==='close-bubble')hideSpeech();else if(name==='quit')app.quit();else if(name==='reset')resetMascot();

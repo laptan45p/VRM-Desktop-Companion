@@ -10,7 +10,7 @@ async function boot(saved={}){
  }
  class Store{constructor(){this.file='/test-data/companion.json';this.data={settings:{...DEFAULTS,scale:.5,...saved},history:[]};}load(){}save(){}}
  const electron={app,BrowserWindow:Window,ipcMain:{handle:(k,v)=>handlers.set(k,v)},dialog:{},Menu:{buildFromTemplate:v=>{const m={items:v,popup:()=>{m.opened=true;}};menus.push(m);return m;}},Tray:class extends EventEmitter{constructor(){super();trays.push(this);}setToolTip(){}popUpContextMenu(m){this.menu=m;}},nativeImage:{createFromPath:()=>({})},globalShortcut:{register:()=>true,unregisterAll:()=>{}},screen};
- const context={require:p=>p==='electron'?electron:p==='./backend.cjs'?{Store,cleanSettings,chat:async(_s,_h,t)=>'返事：'+t}:p==='./layout.cjs'?layout:require(p),__dirname:path.resolve(__dirname,'../src'),AbortController,console,setTimeout:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimeout:()=>{}};
+ const context={require:p=>p==='electron'?electron:p==='./backend.cjs'?{Store,cleanSettings,chat:async(_s,_h,t)=>'返事：'+t}:p==='./layout.cjs'?layout:p==='./interaction.cjs'?require('../src/interaction.cjs'):require(p),__dirname:path.resolve(__dirname,'../src'),AbortController,console,setTimeout:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimeout:()=>{}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8'),context);await new Promise(r=>setImmediate(r));
  const invoke=(channel,...args)=>handlers.get(channel)({sender:windows[0].webContents},...args);
  const as=(i,channel,...args)=>handlers.get(channel)({sender:windows[i].webContents},...args);
@@ -43,9 +43,8 @@ test('transparent area passes clicks through; hover/drag and explicit disable ta
  await invoke('action','pass');await as(1,'hit',true);assert.equal(mascot.ignore,true);
  assert.equal((await as(0,'hit',true)).ok,false);assert.equal((await as(0,'bubble-size',180)).ok,false);
 });
-test('bubble size and popup positions are clamped to work area',async()=>{
- const {windows,as,area}=await boot();await as(3,'bubble-size',5000);assert.equal(windows[3].bounds.height,380);
- for(const w of windows.slice(2)){assert.ok(w.bounds.x>=area.x&&w.bounds.y>=area.y);assert.ok(w.bounds.x+w.bounds.width<=area.x+area.width);assert.ok(w.bounds.y+w.bounds.height<=area.y+area.height);}
+test('bubble content size is bounded without moving its independent position',async()=>{
+ const {windows,as}=await boot();const before=windows[3].getBounds();await as(3,'bubble-size',5000);assert.equal(windows[3].bounds.height,380);assert.equal(windows[3].bounds.x,before.x);assert.equal(windows[3].bounds.y,before.y);
 });
 
 test('input position survives reopening, mascot movement, settings save and restart',async()=>{
@@ -56,4 +55,19 @@ test('input position survives reopening, mascot movement, settings save and rest
  await invoke('save',{...DEFAULTS,scale:3.6});assert.deepEqual(input.getBounds(),chosen);
  const state=await invoke('state');assert.equal(state.data.settings.inputX,chosen.x);assert.equal(state.data.settings.inputY,chosen.y);
  const next=await boot({inputX:chosen.x,inputY:chosen.y});assert.equal(next.windows[2].bounds.x,chosen.x);assert.equal(next.windows[2].bounds.y,chosen.y);
+});
+
+test('bubble position survives speech, mascot movement, settings save and restart',async()=>{
+ const {windows,invoke,as}=await boot();const bubble=windows[3];const chosen={...bubble.getBounds(),x:-1400,y:250};bubble.setBounds(chosen);bubble.emit('move');
+ await invoke('action','talk');await as(1,'drag','start',0,0);await as(1,'drag','move',300,-200);await as(1,'drag','end',300,-200);
+ await invoke('save',{...DEFAULTS,bubbleFont:'Meiryo',bubbleFontSize:24});assert.deepEqual(bubble.getBounds(),chosen);
+ const state=(await invoke('state')).data;assert.equal(state.settings.bubbleX,chosen.x);assert.equal(state.settings.bubbleY,chosen.y);
+ const next=await boot(state.settings);assert.equal(next.windows[3].bounds.x,chosen.x);assert.equal(next.windows[3].bounds.y,chosen.y);
+ await invoke('action','reset-bubble');assert.notEqual(bubble.getBounds().x,chosen.x);
+});
+test('touch IPC is mascot-only and respects disabling, with no input popup',async()=>{
+ const {windows,invoke,as}=await boot();assert.equal((await as(0,'touch','head','poke')).ok,false);
+ await as(1,'touch','head','poke');assert.equal(windows[2].visible,false);assert.equal(windows[1].events.at(-1).reaction.emotion,'surprised');
+ for(let i=0;i<3;i++)await as(1,'touch','chest','poke');assert.equal(windows[1].events.at(-1).reaction.emotion,'angry');
+ await invoke('save',{...DEFAULTS,touchEnabled:false});const n=windows[1].events.length;await as(1,'touch','head','stroke');assert.equal(windows[1].events.length,n);
 });

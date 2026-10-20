@@ -29,3 +29,16 @@ test('soft idle stays bounded, restores rest pose when disabled, and works with 
   VRMUtils.deepDispose(vrm.scene);
  }
 });
+
+test('reactions animate without facial presets and restore bones after completion',async()=>{
+ const {ReactionMotion}=require('../src/motion.cjs');
+ for(const version of ['0','1']){
+  const vrm=await model(version),pose=capturePose(vrm),idle=new SoftIdle(),motion=new ReactionMotion();
+  for(const emotion of ['shy','surprised','angry']){
+   motion.trigger(emotion,0);idle.update(vrm,pose,0,.016,{enabled:false});motion.update(vrm,.4);assert.ok(Math.abs(vrm.humanoid.getNormalizedBoneNode('head').rotation.x-pose.get('head').rotation.x)>.01);
+   for(let i=0;i<300;i++){idle.update(vrm,pose,i/60,.016,{enabled:false});motion.update(vrm,i/60);vrm.update(.016);}
+   assert.ok(Math.abs(vrm.humanoid.getNormalizedBoneNode('head').rotation.x-pose.get('head').rotation.x)<.001);
+  }
+  VRMUtils.deepDispose(vrm.scene);
+ }
+});

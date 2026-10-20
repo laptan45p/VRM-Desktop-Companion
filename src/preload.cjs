@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('companion', {
   cancel:()=>ipcRenderer.invoke('cancel'),
   clear:()=>ipcRenderer.invoke('clear'),
   hit:v=>ipcRenderer.invoke('hit',v),
+  touch:(region,gesture)=>ipcRenderer.invoke('touch',region,gesture),
   drag:(phase,x,y)=>ipcRenderer.invoke('drag',phase,x,y),
   bubbleSize:h=>ipcRenderer.invoke('bubble-size',h),
   modelStatus:text=>ipcRenderer.invoke('model-status',text),

@@ -1,6 +1,6 @@
-# Validation — 0.1.4
+# Validation — 0.1.5
 
-25 tests passed with the supplied runtime:
+33 tests passed with the supplied runtime:
 
 - Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
 - VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
@@ -9,7 +9,12 @@
 - Left click greeting and focused input, speech replacement and dismissal.
 - Shared context menu for character right-click and tray left/right clicks.
 - Transparent-area hit testing, explicit click-disable priority and drag movement.
-- Bubble measurement, adjacent placement and work-area clamping.
+- Bubble height limits and independent position persistence across speech, mascot movement, save and restart; explicit position reset.
+- Arbitrary bubble font family and size apply from settings.
+- Rotating anatomical region tests separate front chest and rear buttocks, excluding front pelvis and arms.
+- Completed pointer tap/stroke, cancellation and Shift-drag through actual VRM mesh picking.
+- Sensitive-action counts, timeout/reset, restricted touch IPC and disabling reactions.
+- Reaction motions restore the pose and tolerate missing expression presets in VRM 0.x/1.0.
 - Text lip motion is bounded, closes when finished/disabled and tolerates missing or partial vowel expressions.
 - Soft idle works with VRM 0.x/1.0, stays within small bone rotation limits and restores the original pose when disabled.
 - Motion controls retain their settings; preview action works without an LLM.
