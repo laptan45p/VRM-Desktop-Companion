@@ -1,0 +1,49 @@
+name: Windows release
+on:
+  workflow_dispatch:
+  push:
+    branches: ['release/v*']
+permissions:
+  contents: write
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm run package:win
+      - name: Create and verify release archives
+        run: python scripts/package_release.py --runtime release/VRM-Desktop-Companion-win32-x64 --output artifacts
+      - name: Publish release after uploading every asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tag = "v$version"
+          $existing = gh release view $tag --json isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if (-not ($existing | ConvertFrom-Json).isDraft) { throw "Release $tag already exists; refusing to replace a published release." }
+          } else {
+            gh release create $tag --target $env:GITHUB_SHA --draft --title "VRM Desktop Companion $version" --notes-file artifacts/notes.md
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create draft release' }
+          }
+          $assets = @((Get-ChildItem artifacts/*.zip).FullName) + @((Resolve-Path artifacts/SHA256SUMS.txt).Path)
+          gh release upload $tag @assets --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Asset upload failed; release remains a draft' }
+          gh release edit $tag --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Could not publish release' }
