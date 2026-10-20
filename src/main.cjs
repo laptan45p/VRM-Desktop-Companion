@@ -1,9 +1,9 @@
 'use strict';
 const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,screen}=require('electron');
 const fs=require('node:fs/promises'),path=require('node:path');
-const {mascotBounds,popupBounds,clampPosition}=require('./layout.cjs');
+const {mascotBounds,popupBounds,restoreInputBounds}=require('./layout.cjs');
 const {Store,cleanSettings,listModels,chat}=require('./backend.cjs');
-let store,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null;
+let store,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null;
 const gotLock=app.requestSingleInstanceLock();if(!gotLock)app.quit();
 const allWindows=()=>[control,mascot,input,bubble].filter(w=>w&&!w.isDestroyed());
 function result(fn){return async(...args)=>{try{return {ok:true,data:await fn(...args)};}catch(e){return {ok:false,error:e.message};}};}
@@ -12,7 +12,16 @@ function area(){return screen.getDisplayMatching(mascot.getBounds()).workArea;}
 function positionPopups(){
  if(!mascot)return;const r=area(),m=mascot.getBounds();
  if(bubble&&!bubble.isDestroyed()){const b=bubble.getBounds(),bounds=popupBounds(m,b.width,b.height,r,'bubble');bubble.setBounds(bounds,false);bubble.webContents.send('update',{bubbleSide:bounds.x<m.x?'left':'right'});}
- if(input&&!input.isDestroyed()){const b=input.getBounds();input.setBounds(popupBounds(m,b.width,b.height,r,'input'),false);}
+
+}
+function inputAreas(){return screen.getAllDisplays().map(d=>d.workArea);}
+function rememberInput(){
+ const b=input.getBounds();store.data.settings.inputX=b.x;store.data.settings.inputY=b.y;
+ clearTimeout(inputSaveTimer);inputSaveTimer=setTimeout(()=>{inputSaveTimer=null;try{store.save();}catch(e){console.error('会話窓の位置を保存できません:',e.message);}},200);inputSaveTimer.unref?.();
+}
+function recoverInput(){
+ const b=input.getBounds(),next=restoreInputBounds({x:b.x,y:b.y},b,inputAreas());
+ if(next.x!==b.x||next.y!==b.y)input.setBounds(next,false);
 }
 function resizeMascot(reset=false){
  if(!mascot||mascot.isDestroyed())return;
@@ -59,7 +68,9 @@ if(gotLock)app.whenReady().then(async()=>{
  control=new BrowserWindow({width:570,height:850,minWidth:480,minHeight:650,show:false,title:'VRM Desktop Companion — 設定・履歴',backgroundColor:'#f5f5f3',webPreferences});
  const r=screen.getPrimaryDisplay().workArea;
  mascot=new BrowserWindow({...mascotBounds(store.data.settings.scale,r),show:false,transparent:true,frame:false,resizable:false,hasShadow:false,alwaysOnTop:store.data.settings.topmost,skipTaskbar:true,backgroundColor:'#00000000',webPreferences});
- input=new BrowserWindow({width:390,height:224,minWidth:320,minHeight:190,show:false,resizable:false,autoHideMenuBar:true,title:'話しかける',alwaysOnTop:store.data.settings.topmost,skipTaskbar:true,backgroundColor:'#f7f5ee',webPreferences});
+ const inputInitial=popupBounds(mascot.getBounds(),390,224,r,'input');
+ const inputLocation=restoreInputBounds({x:store.data.settings.inputX,y:store.data.settings.inputY},inputInitial,inputAreas());
+ input=new BrowserWindow({...inputLocation,minWidth:320,minHeight:190,show:false,resizable:false,autoHideMenuBar:true,title:'話しかける',alwaysOnTop:store.data.settings.topmost,skipTaskbar:true,backgroundColor:'#f7f5ee',webPreferences});
  bubble=new BrowserWindow({width:320,height:160,show:false,transparent:true,frame:false,resizable:false,hasShadow:false,alwaysOnTop:store.data.settings.topmost,skipTaskbar:true,backgroundColor:'#00000000',webPreferences});
  for(const w of allWindows()){w.webContents.setWindowOpenHandler(()=>({action:'deny'}));w.webContents.on('will-navigate',e=>e.preventDefault());}
  control.webContents.session.webRequest.onBeforeRequest({urls:['http://*/*','https://*/*','ws://*/*','wss://*/*']},(_d,cb)=>cb({cancel:true}));
@@ -67,8 +78,9 @@ if(gotLock)app.whenReady().then(async()=>{
  await Promise.all([control.loadFile(path.join(__dirname,'index.html'),{query:{view:'control'}}),mascot.loadFile(path.join(__dirname,'index.html'),{query:{view:'mascot'}}),input.loadFile(path.join(__dirname,'index.html'),{query:{view:'input'}}),bubble.loadFile(path.join(__dirname,'index.html'),{query:{view:'bubble'}})]);
  for(const w of [control,input,bubble])w.on('close',e=>{if(!app.isQuitting){e.preventDefault();w.hide();}});
  mascot.on('close',e=>{if(!app.isQuitting){e.preventDefault();hideMascot();}});
+ input.on('move',rememberInput);
  mascot.on('move',positionPopups);
- screen.on('display-metrics-changed',()=>resizeMascot());screen.on('display-removed',()=>resizeMascot());
+ screen.on('display-metrics-changed',()=>{resizeMascot();recoverInput();});screen.on('display-removed',()=>{resizeMascot();recoverInput();});
  tray=new Tray(nativeImage.createFromPath(path.join(__dirname,'tray.png')));tray.setToolTip('VRM Desktop Companion');
  tray.on('click',()=>tray.popUpContextMenu(menu()));tray.on('right-click',()=>tray.popUpContextMenu(menu()));
  if(!globalShortcut.register('CommandOrControl+Alt+M',()=>setPass(!pass)))startupError+=' Ctrl+Alt+Mを登録できませんでした。';
@@ -76,13 +88,13 @@ if(gotLock)app.whenReady().then(async()=>{
  resizeMascot();applyHit();mascot.showInactive();if(startupError)speak(startupError);
 });
 app.on('second-instance',()=>{if(input)showInput();});
-app.on('before-quit',()=>{app.isQuitting=true;active?.abort();clearTimeout(speechTimer);});
+app.on('before-quit',()=>{app.isQuitting=true;active?.abort();clearTimeout(speechTimer);if(inputSaveTimer){clearTimeout(inputSaveTimer);try{store.save();}catch{}}});
 app.on('will-quit',()=>globalShortcut.unregisterAll());app.on('window-all-closed',()=>app.quit());
 function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=>{if(!allWindows().some(w=>w.webContents===e.sender)||only&&e.sender!==only()?.webContents)throw new Error('不明なウィンドウです。');return fn(...args);}));}
 handle('state',()=>({...store.data,busy:!!active,pass,startupError,dataPath:store.file,speech}));
 handle('save',settings=>{
  if(active)throw new Error('生成を停止してから設定を変更してください。');
- store.data.settings=cleanSettings({...settings,modelPath:store.data.settings.modelPath});store.save();
+ store.data.settings=cleanSettings({...settings,modelPath:store.data.settings.modelPath,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY});store.save();
  for(const w of [mascot,input,bubble])w.setAlwaysOnTop(store.data.settings.topmost);resizeMascot();broadcast();return store.data.settings;
 });
 handle('models',s=>listModels(cleanSettings(s)));handle('choose-vrm',selectVRM);
@@ -91,7 +103,7 @@ handle('hit',value=>{hovered=!!value;applyHit();},()=>mascot);
 handle('drag',(phase,x,y)=>{
  if(pass)return;if(!['start','move','end'].includes(phase)||!Number.isFinite(x)||!Number.isFinite(y))throw new Error('移動座標が不正です。');
  if(phase==='start')drag={x,y,bounds:mascot.getBounds()};
- else if(drag&&phase==='move'){const b={...drag.bounds,x:Math.round(drag.bounds.x+x-drag.x),y:Math.round(drag.bounds.y+y-drag.y)},r=screen.getDisplayMatching(b).workArea;mascot.setBounds(clampPosition(b,r),false);}
+ else if(drag&&phase==='move'){const b={...drag.bounds,x:Math.round(drag.bounds.x+x-drag.x),y:Math.round(drag.bounds.y+y-drag.y)};mascot.setBounds(b,false);}
  else if(phase==='end')drag=null;applyHit();
 },()=>mascot);
 handle('bubble-size',(height)=>{if(!Number.isFinite(height))return;const r=area(),h=Math.min(Math.max(90,Math.round(height)),380,r.height);bubble.setBounds({...bubble.getBounds(),height:h,width:Math.min(320,r.width)},false);positionPopups();},()=>bubble);

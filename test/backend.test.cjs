@@ -33,7 +33,7 @@ test('save/reload Japanese settings and complete conversation turns',()=>{
  try{const s=new Store(dir);s.data.settings.name='白い相棒';s.data.history=[{role:'user',content:'元気？'},{role:'assistant',content:'元気だよ！'}];s.save();const s2=new Store(dir);s2.load();assert.deepEqual(s2.data,s.data);assert.ok(!fs.existsSync(s.file+'.tmp'));s2.data.history.push({role:'user',content:'未完了'});s2.save();const s3=new Store(dir);s3.load();assert.equal(s3.data.history.length,2);}finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('clamp settings, preserve defaults, reject unknown providers and cloud names',async()=>{
- assert.equal(cleanSettings({scale:10}).scale,1.8);assert.equal(cleanSettings({historyTurns:0}).historyTurns,1);assert.equal(cleanSettings({}).name,DEFAULTS.name);assert.throws(()=>cleanSettings({provider:'external'}));await assert.rejects(chat({...DEFAULTS,model:'model:cloud'},[],'hi'),/cloud/);
+ assert.equal(cleanSettings({scale:10}).scale,3.6);assert.equal(cleanSettings({historyTurns:0}).historyTurns,1);assert.equal(cleanSettings({}).name,DEFAULTS.name);assert.throws(()=>cleanSettings({provider:'external'}));await assert.rejects(chat({...DEFAULTS,model:'model:cloud'},[],'hi'),/cloud/);
 });
 test('Qwen3 disables optional thinking to reserve the short reply budget',async()=>{
  await server(async(req,res)=>{const b=await readBody(req);assert.equal(b.think,false);res.setHeader('Content-Type','application/json');res.end(JSON.stringify({message:{content:'こんにちは'}}));},async endpoint=>{assert.equal(await chat({...DEFAULTS,endpoint,model:'qwen3:4b'},[],'hi'),'こんにちは');});

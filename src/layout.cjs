@@ -5,14 +5,13 @@
  'use strict';
  const TOP=8,BOTTOM=8,BASE_WIDTH=440,BASE_HEIGHT=518;
  function mascotBounds(scale,area,previous){
-  const value=Number(scale),requested=Number.isFinite(value)?Math.max(.5,Math.min(1.8,value)):1;
-  // Screen coordinates are DIPs, matching BrowserWindow bounds at any Windows DPI.
-  const factor=Math.min(requested,Math.max(1,area.width)/BASE_WIDTH,Math.max(1,area.height-TOP-BOTTOM)/BASE_HEIGHT);
-  const width=Math.min(area.width,Math.max(Math.min(280,area.width),Math.round(BASE_WIDTH*factor)));
-  const height=Math.min(area.height,Math.round(BASE_HEIGHT*factor)+TOP+BOTTOM);
+  const value=Number(scale),factor=Number.isFinite(value)?Math.max(.5,Math.min(3.6,value)):1;
+  // Preserve scale even when larger than a display. Only explicit reset uses a screen anchor.
+  const width=Math.max(280,Math.round(BASE_WIDTH*factor));
+  const height=Math.round(BASE_HEIGHT*factor)+TOP+BOTTOM;
   const center=previous?previous.x+previous.width/2:area.x+area.width-width/2;
   const bottom=previous?previous.y+previous.height:area.y+area.height;
-  return {x:Math.round(Math.max(area.x,Math.min(area.x+area.width-width,center-width/2))),y:Math.round(Math.max(area.y,Math.min(area.y+area.height-height,bottom-height))),width,height};
+  return {x:Math.round(center-width/2),y:Math.round(bottom-height),width,height};
  }
  function fitDistance(size,fov,aspect){
   const tan=Math.tan(fov*Math.PI/360);
@@ -27,5 +26,11 @@
   const y=kind==='input'?m.y+m.height-height:m.y+Math.min(100,m.height*.16);
   return clampPosition({x,y,width,height},area);
  }
- return {TOP,BOTTOM,BASE_WIDTH,BASE_HEIGHT,mascotBounds,fitDistance,popupBounds,clampPosition};
+ function restoreInputBounds(position,initial,areas){
+  if(!Number.isFinite(position.x)||!Number.isFinite(position.y))return initial;
+  const b={...initial,x:position.x,y:position.y};
+  const visible=areas.some(r=>b.x+b.width>r.x+40&&b.x<r.x+r.width-40&&b.y+30>r.y&&b.y<r.y+r.height-30);
+  return visible?b:clampPosition(b,areas[0]);
+ }
+ return {TOP,BOTTOM,BASE_WIDTH,BASE_HEIGHT,mascotBounds,fitDistance,popupBounds,clampPosition,restoreInputBounds};
 });
