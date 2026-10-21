@@ -132,7 +132,7 @@ app.on('second-instance',()=>{if(input)showInput();});
 app.on('before-quit',()=>{app.isQuitting=true;cancelVoice(false);touchResponses.cancel();active?.abort();clearTimeout(speechTimer);if(inputSaveTimer){clearTimeout(inputSaveTimer);try{store.save();}catch{}}});
 app.on('will-quit',()=>globalShortcut.unregisterAll());app.on('window-all-closed',()=>app.quit());
 function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=>{if(!allWindows().some(w=>w.webContents===e.sender)||only&&e.sender!==only()?.webContents)throw new Error('不明なウィンドウです。');return fn(...args);}));}
-handle('state',()=>({...store.data,relationships:undefined,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus}));
+handle('state',()=>({...store.data,version:app.getVersion?.()||'',relationships:undefined,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus}));
 handle('save',settings=>{
  if(active)throw new Error('生成を停止してから設定を変更してください。');
  const cleaned=cleanSettings(settings);if(isCloud(cleaned.provider))llmBase(cleaned);

@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const THREE=require('./bundle-runtime.cjs'),{DEFAULTS}=require('../src/backend.cjs'),layout=require('../src/layout.cjs');
-async function boot(view,withModel=false,audioFixture=null){
+async function boot(view,withModel=false,audioFixture=null,modelFixture=null){
  const nodes=new Map(),listeners={},calls=[],rootEvents={},settings={...DEFAULTS,model:'test-local',modelPath:withModel?'fixture.vrm':''},events={};let notify,failSend=false,rendered,frame;
  const node=id=>{if(!nodes.has(id))nodes.set(id,{id,style:{},hidden:true,value:'',textContent:'',checked:false,disabled:false,children:[],clientWidth:440,clientHeight:518,scrollHeight:200,scrollTop:0,classList:{toggle(){},add(){}},append(...a){this.children.push(...a);},replaceChildren(){this.children=[];},add(o){this.children.push(o);},addEventListener(type,fn){this['on'+type]=fn;},getBoundingClientRect(){return {left:0,top:0,width:440,height:id==='speechCard'?120:518};},focus(){this.focused=true;},setPointerCapture(){this.capture=true;},hasPointerCapture(){return !!this.capture;},releasePointerCapture(){this.capture=false;},requestSubmit(){return this.onsubmit?.({preventDefault(){}});}});return nodes.get(id);};
  const ok=data=>Promise.resolve({ok:true,data});
@@ -9,7 +9,7 @@ async function boot(view,withModel=false,audioFixture=null){
   zoom:delta=>{calls.push(['zoom',delta]);return ok(settings.scale);},
   orientation:angles=>{calls.push(['orientation',angles]);return ok({...settings,...angles});},
   action:name=>{calls.push(['action',name]);return ok();},hit:v=>{calls.push(['hit',v]);return ok();},drag:(...a)=>{calls.push(['drag',...a]);return ok();},bubbleSize:h=>{calls.push(['bubbleSize',h]);return ok();},modelStatus:t=>{calls.push(['modelStatus',t]);return ok();},touch:(...args)=>{calls.push(['touch',...args]);return ok();},vrm:()=>ok(withModel?new Uint8Array(require('./fixture.cjs')()):null),
-  send:async text=>{calls.push(['send',text]);if(failSend)return {ok:false,error:'接続できません'};return {ok:true,data:'返事'};},cancel:()=>ok(),models:()=>ok(['test-local']),save:s=>{calls.push(['save',s]);return ok(s);}};
+  send:async text=>{calls.push(['send',text]);if(failSend)return {ok:false,error:'接続できません'};return {ok:true,data:'返事'};},cancel:()=>ok(),models:s=>{calls.push(['models',s]);return modelFixture?modelFixture(s):ok(['test-local']);},save:s=>{calls.push(['save',s]);return ok(s);}};
  class Renderer{constructor(){this.domElement={};}setClearColor(){}setPixelRatio(){}setSize(){}setAnimationLoop(cb){frame=cb;cb();}render(scene,camera){rendered={scene,camera};}}
  let now=0;const context={THREE:{...THREE,Clock:class{getDelta(){return .05;}},WebGLRenderer:Renderer},GLTFLoader:THREE.GLTFLoader,VRMLoaderPlugin:THREE.VRMLoaderPlugin,VRMUtils:THREE.VRMUtils,VRMAnimationLoaderPlugin:THREE.VRMAnimationLoaderPlugin,createVRMAnimationClip:THREE.createVRMAnimationClip,
   window:{AudioContext:class{constructor(){if(!audioFixture)throw new Error('No audio fixture');return audioFixture.ctx;}},companionAudio:require('../src/speech-audio.cjs'),companionVrma:require('../src/vrma-player.cjs'),companion:api,companionLayout:layout,companionOrientation:require('../src/orientation.cjs'),companionPicking:require('../src/picking.cjs'),companionHand:withModel==='hand'?{HandDrag:class{begin(){return true;}move(v){calls.push(['handMove',v.x,v.y,v.z]);}release(){calls.push(['handRelease']);}reset(){}restore(){}update(){}}}:require('../src/hand.cjs'),companionMotion:require('../src/motion.cjs'),companionInteraction:require('../src/interaction.cjs'),companionCloth:withModel==='cloth'?{ClothDrag:class{begin(){return true;}move(v){calls.push(['clothMove',v.x,v.y,v.z]);}release(){calls.push(['clothRelease']);}reset(){calls.push(['clothReset']);}restore(){}update(){}}}:require('../src/cloth.cjs'),addEventListener:(k,f)=>listeners[k]=f},document:{body:{className:'',dataset:{}},documentElement:{classList:{add(){}}},getElementById:node,createElement:()=>node('new-'+nodes.size),createTextNode:text=>({textContent:text}),addEventListener:(k,f)=>events[k]=f},location:{search:'?view='+view},URLSearchParams,
@@ -161,4 +161,21 @@ test('Ctrl wheel zoom requires a character hit, normalizes wheel modes and never
 });
 test('external wheel scale updates numeric settings without discarding unsaved persona edits',async()=>{
  const {node,notify,calls}=await boot('control');node('persona').value='編集中';node('settingsForm').oninput({target:node('persona')});notify({settings:{...DEFAULTS,scale:2.5}});assert.equal(node('scale').value,2.5);assert.equal(node('persona').value,'編集中');node('scale').value='2.125';await node('settingsForm').onsubmit({preventDefault(){}});assert.equal(calls.find(c=>c[0]==='save')[1].scale,2.125);
+});
+
+test('model list request shows immediate progress next to button, blocks duplicates and opens selectable results',async()=>{
+ for(const provider of ['openai','openrouter']){
+  let resolve;const {node,calls,notify}=await boot('control',false,null,()=>new Promise(r=>resolve=r));node('provider').value=provider;node('provider').onchange();
+  const pending=node('fetchModels').onclick();assert.match(node('connectionStatus').textContent,/取得中/);assert.equal(node('fetchModels').textContent,'取得中…');assert.equal(node('fetchModels').disabled,true);
+  notify({voiceStatus:'更新'});assert.equal(node('fetchModels').disabled,true);await node('fetchModels').onclick();assert.equal(calls.filter(c=>c[0]==='models').length,1);
+  resolve({ok:true,data:['first-model','second-model']});await pending;assert.equal(node('modelListLabel').hidden,false);assert.equal(node('modelList').children.length,2);assert.match(node('connectionStatus').textContent,/2件取得/);assert.equal(node('fetchModels').disabled,false);
+  node('modelList').value='second-model';node('modelList').onchange();await node('settingsForm').onsubmit({preventDefault(){}});assert.equal(calls.find(c=>c[0]==='save')[1].model,'second-model');
+ }
+});
+test('model list errors and empty responses are visible and changing providers ignores stale responses',async()=>{
+ let finish;const {node}=await boot('control',false,null,()=>new Promise(r=>finish=r));let pending=node('fetchModels').onclick();finish({ok:false,error:'APIキーを登録してください。'});await pending;assert.match(node('connectionStatus').textContent,/APIキー/);assert.equal(node('modelListLabel').hidden,true);assert.equal(node('fetchModels').disabled,false);
+ pending=node('fetchModels').onclick();finish({ok:true,data:[]});await pending;assert.match(node('connectionStatus').textContent,/一覧が空/);
+ pending=node('fetchModels').onclick();const old=finish;node('provider').value='openrouter';node('provider').onchange();const newer=node('fetchModels').onclick();old({ok:true,data:['stale']});await pending;assert.match(node('connectionStatus').textContent,/取得中/);assert.equal(node('fetchModels').disabled,true);
+ finish({ok:true,data:['current']});await newer;assert.equal(node('modelList').children[0].value,'current');
+ const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');assert.ok(html.indexOf('id="fetchModels"')<html.indexOf('id="connectionStatus"'));assert.ok(html.indexOf('id="connectionStatus"')<html.indexOf('id="cloudSettings"'));
 });

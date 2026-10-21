@@ -1,7 +1,10 @@
-# Validation — 0.1.22
+# Validation — 0.1.23
 
-125 tests passed after a fresh dependency install and renderer build:
+127 tests passed after a fresh dependency install and renderer build:
 
+- OpenAI/OpenRouter model-list buttons show immediate progress, retain disabled status during unrelated updates, prevent duplicate requests and expose selectable results.
+- Model-list selection persists the chosen ID; missing-key errors, empty responses and stale results after provider changes have explicit UI handling.
+- Model-list status precedes the cloud settings block in the actual HTML so it is next to the request button.
 - Ctrl-wheel mesh hit requirement, normal-wheel exclusion, pixel/line/page delta normalization and malformed delta rejection.
 - Mascot-only zoom IPC, cumulative latest-scale updates, limits, restart settings, unchanged popup bounds and stable center/bottom through repeated zooms.
 - Numeric scale input supports the 0.001 increments used by wheel zoom; direct numeric edits are included in settings saves.

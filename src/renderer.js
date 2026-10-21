@@ -7,7 +7,7 @@ const api=window.companion,$=id=>document.getElementById(id);
 const view=new URLSearchParams(location.search).get('view')||'control',isMascot=view==='mascot';
 document.body.className=view;document.documentElement.classList.add(view+'-root');
 $({control:'control',mascot:'mascot',input:'inputPanel',bubble:'speechPanel'}[view]).hidden=false;
-let state,dirty=false,pendingText='',busy=false;
+let state,dirty=false,pendingText='',busy=false,fetchingModels=false,modelRequest=0;
 function status(id,text,error=false){$(id).textContent=text;$(id).classList.toggle('error',error);}
 async function call(promise){const r=await promise;if(!r.ok)throw new Error(r.error);return r.data;}
 function wrap(fn,id='chatStatus'){return async(...args)=>{try{await fn(...args);}catch(e){status(id,e.message,true);}};}
@@ -26,7 +26,12 @@ async function refreshKeyStatus(){
  catch(e){if(serial===keyRequest)status('keyStatus',e.message,true);}
 }
 function updateProviderUI(){const provider=$('provider').value,cloud=cloudProvider(provider);$('cloudSettings').hidden=!cloud;$('endpoint').readOnly=provider==='openai'||provider==='openrouter';$('openrouterHelp').hidden=provider!=='openrouter';$('model').placeholder=provider==='openrouter'?'例：anthropic/claude-haiku-5.5':'モデルIDを選択・直接入力';$('tokenParamLabel').hidden=provider!=='compatible';$('connectionBadge').textContent=cloud?'クラウドLLM':'ローカル接続';if(cloud)refreshKeyStatus();else{keyRequest++;$('apiKey').value='';}}
-function setModels(models,selected){$('modelOptions').replaceChildren();for(const m of models)$('modelOptions').append(new Option(m,m));$('model').value=selected||'';}
+function setModels(models,selected,showList=false){
+ $('modelOptions').replaceChildren();$('modelList').replaceChildren();for(const m of models){$('modelOptions').append(new Option(m,m));$('modelList').add(new Option(m,m));}
+ $('model').value=selected||'';$('modelList').value=selected||'';$('modelListLabel').hidden=!showList||!models.length;
+}
+function invalidateModels(){modelRequest++;fetchingModels=false;$('fetchModels').textContent='モデル一覧を取得';$('fetchModels').disabled=busy;$('modelListLabel').hidden=true;status('connectionStatus','');}
+
 function renderHistory(){
  const area=$('history');area.replaceChildren();
  const history=[...state.history];if(pendingText)history.push({role:'user',content:pendingText});
@@ -42,7 +47,7 @@ function renderRelationship(){
  $('relationshipSummary').textContent=`${r.label}：${r.stage}（好感度 ${r.affinity}）・${r.status} ／ 今の気分：${moods[r.mood]||r.mood}`;
  $('confess').disabled=busy||!r.romanceEnabled;
 }
-function updateBusy(value){busy=value;$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear','fetchModels'])$(id).disabled=busy;$('saveKey').disabled=busy||!keyAvailable;$('deleteKey').disabled=busy||!keySaved;for(const id of ['relationshipProfile','relationshipName','createRelationship','romanceEnabled'])$(id).disabled=busy;$('confess').disabled=busy||!state.relationship?.romanceEnabled;}
+function updateBusy(value){busy=value;$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear'])$(id).disabled=busy;$('fetchModels').disabled=busy||fetchingModels;$('saveKey').disabled=busy||!keyAvailable;$('deleteKey').disabled=busy||!keySaved;for(const id of ['relationshipProfile','relationshipName','createRelationship','romanceEnabled'])$(id).disabled=busy;$('confess').disabled=busy||!state.relationship?.romanceEnabled;}
 async function initControl(){
  renderRelationship();
  const relationAction=async(operation,value)=>{if(dirty)throw new Error('変更した設定を先に保存してください。');state.relationship=await call(api.relationship(operation,value));renderRelationship();status('relationshipStatus','関係の設定を保存しました。');};
@@ -54,11 +59,19 @@ async function initControl(){
  const tabs=selectControlTab;
  $('chatTab').onclick=()=>tabs('chat');$('settingsTab').onclick=()=>tabs('settings');
  $('settingsForm').oninput=e=>{if(['relationshipProfile','relationshipName','romanceEnabled'].includes(e?.target?.id))return;dirty=true;};
- $('provider').onchange=()=>{$('endpoint').value={ollama:'http://127.0.0.1:11434',lmstudio:'http://127.0.0.1:1234',openai:'https://api.openai.com/v1',openrouter:'https://openrouter.ai/api/v1',compatible:''}[$('provider').value];$('apiKey').value='';setModels([],$('provider').value==='openai'?'gpt-6-luna':'');dirty=true;updateProviderUI();};
- $('endpoint').oninput=()=>{dirty=true;$('apiKey').value='';refreshKeyStatus();};
+ $('provider').onchange=()=>{invalidateModels();$('endpoint').value={ollama:'http://127.0.0.1:11434',lmstudio:'http://127.0.0.1:1234',openai:'https://api.openai.com/v1',openrouter:'https://openrouter.ai/api/v1',compatible:''}[$('provider').value];$('apiKey').value='';setModels([],$('provider').value==='openai'?'gpt-6-luna':'');dirty=true;updateProviderUI();};
+ $('endpoint').oninput=()=>{invalidateModels();dirty=true;$('apiKey').value='';refreshKeyStatus();};
  $('saveKey').onclick=wrap(async()=>{const key=$('apiKey').value;$('apiKey').value='';await call(api.saveKey(settingsFromForm(),key));await refreshKeyStatus();},'keyStatus');
  $('deleteKey').onclick=wrap(async()=>{await call(api.deleteKey(settingsFromForm()));$('apiKey').value='';await refreshKeyStatus();},'keyStatus');
- $('fetchModels').onclick=wrap(async()=>{status('connectionStatus','接続中…');const models=await call(api.models(settingsFromForm()));setModels(models,$('model').value);dirty=true;status('connectionStatus',models.length?`${models.length}件取得しました。モデルIDを選択・入力して保存してください。`:'一覧が空です。モデルIDを直接入力するか、接続先のモデルを確認してください。');},'connectionStatus');
+ $('modelList').onchange=()=>{if($('modelList').value){$('model').value=$('modelList').value;dirty=true;}};
+ $('fetchModels').onclick=async()=>{
+  if(fetchingModels||busy)return;const request=++modelRequest;fetchingModels=true;$('fetchModels').disabled=true;$('fetchModels').textContent='取得中…';status('connectionStatus','モデル一覧を取得中…（最大約10秒）');$('modelListLabel').hidden=true;
+  try{
+   const models=await call(api.models(settingsFromForm()));if(request!==modelRequest)return;
+   setModels(models,$('model').value,true);dirty=true;status('connectionStatus',models.length?`${models.length}件取得しました。下の一覧から選び、「設定を保存」を押してください。`:'一覧が空です。モデルIDを直接入力するか、接続先のモデルを確認してください。');
+  }catch(e){if(request===modelRequest)status('connectionStatus',e.message,true);}
+  finally{if(request===modelRequest){fetchingModels=false;$('fetchModels').disabled=busy;$('fetchModels').textContent='モデル一覧を取得';}}
+ };
  $('settingsForm').onsubmit=async e=>{e.preventDefault();await wrap(async()=>{const s=await call(api.save(settingsFromForm()));state.settings=s;dirty=false;status('connectionStatus','設定を保存しました。');},'connectionStatus')();};
  $('loadVRM').onclick=wrap(async()=>{const p=await call(api.chooseVRM());if(p)status('chatStatus','VRMを読み込み中です。結果は吹き出しに表示します。');});
  $('chatForm').onsubmit=async e=>{e.preventDefault();if(busy)return;await wrap(async()=>{
@@ -361,7 +374,7 @@ api.onUpdate(data=>{
 });
 (async()=>{try{
  state=await call(api.state());
- if(isMascot)initMascot();else if(view==='input')initInput();else if(view==='bubble')initSpeech();else{await initControl();$('companionName').textContent=state.settings.name;$('modelBadge').textContent=state.settings.model||'モデル未選択';}
+ if(isMascot)initMascot();else if(view==='input')initInput();else if(view==='bubble')initSpeech();else{await initControl();if(state.version)$('appVersion').textContent='v'+state.version;$('companionName').textContent=state.settings.name;$('modelBadge').textContent=state.settings.model||'モデル未選択';}
 }catch(e){if(isMascot)api.modelStatus(e.message);else status(view==='input'?'inputStatus':view==='bubble'?'speechText':'chatStatus',e.message,true);}})();
 })();
 
