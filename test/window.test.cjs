@@ -201,3 +201,9 @@ test('switching VRMs restores their embeddings and cancels late audio from the p
   await b.invoke('action','test-voice');assert.equal(requests[1].path,voiceA);b.app.emit('before-quit');assert.equal(b.saved().voiceBindings.length,2);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('enlarged conversation window keeps its composer on-screen after upgrading from the small input',async()=>{
+ const {windows,area}=await boot({inputX:-500,inputY:670}),input=windows[2];
+ assert.equal(input.options.resizable,true);assert.equal(input.bounds.height,520);
+ assert.ok(input.bounds.y+input.bounds.height<=area.y+area.height);assert.equal(input.bounds.x,-500);
+});

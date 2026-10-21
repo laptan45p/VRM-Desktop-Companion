@@ -1,7 +1,10 @@
-# Validation — 0.1.27
+# Validation — 0.1.28
 
-137 tests passed after a fresh dependency install and renderer build:
+140 tests passed with the existing pinned dependencies and a fresh renderer build:
 
+- Input conversation log uses plain text, displays saved and pending messages without reply duplication, preserves failed drafts, and follows character/history changes.
+- Enlarged input window recovers the full composer on-screen when upgrading from a saved position near the bottom.
+- Input log retains scroll position while reading and during unrelated broadcasts; near-bottom readers follow new replies. Windows desktop visual checks remain manual.
 - Per-VRM voice bindings migrate legacy settings, survive persistence/restart, normalize Windows paths, reject invalid entries and isolate demo/real models.
 - Switching VRMs restores embeddings, prompts for an unregistered voice and cancels stale audio before it can publish under the new model.
 - Voice-path labels update during VRM changes without discarding unsaved persona edits.

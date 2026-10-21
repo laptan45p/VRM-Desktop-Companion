@@ -183,3 +183,28 @@ test('model list errors and empty responses are visible and changing providers i
 test('VRM voice changes update the selected embedding label even while other settings are unsaved',async()=>{
  const {node,notify}=await boot('control');node('persona').value='未保存の性格';node('settingsForm').oninput({target:node('persona')});notify({settings:{...DEFAULTS,modelPath:'B.vrm',speakerPath:'B.speaker.safetensors'}});assert.equal(node('speakerPath').textContent,'B.speaker.safetensors');assert.equal(node('vrmPath').textContent,'B.vrm');assert.equal(node('persona').value,'未保存の性格');
 });
+
+test('input log follows saved character history, shows pending text once, and retains failed drafts',async()=>{
+ const {node,notify,setFailure}=await boot('input'),area=node('inputHistory');
+ assert.equal(area.children[0].className,'empty');
+ const history=[{role:'user',content:'前の会話'},{role:'assistant',content:'<b>前の返事</b>'}];
+ notify({history});assert.equal(area.children.length,2);assert.equal(area.children[1].children[1].textContent,'<b>前の返事</b>');
+ assert.equal(area.children[0].children[0].textContent,'あなた');
+ node('messageInput').value='新しい会話';const sending=node('inputForm').onsubmit({preventDefault(){}});
+ assert.equal(area.children.length,3);assert.equal(area.children[2].children[1].textContent,'新しい会話');
+ notify({history:[...history,{role:'user',content:'新しい会話'},{role:'assistant',content:'新しい返事'}],reply:'新しい返事'});
+ assert.equal(area.children.length,4);await sending;assert.equal(area.children.length,4);
+ node('messageInput').value='再送する文章';setFailure(true);await node('inputForm').onsubmit({preventDefault(){}});
+ assert.equal(node('messageInput').value,'再送する文章');assert.equal(area.children.length,4);
+ notify({settings:{...DEFAULTS,modelPath:'別のキャラ.vrm',name:'別の相棒'},history:[{role:'assistant',content:'別の履歴'}]});
+ assert.equal(area.children.length,1);assert.equal(area.children[0].children[0].textContent,'別の相棒');
+ notify({history:[]});assert.equal(area.children[0].className,'empty');
+});
+test('input log preserves reading position on updates and follows new replies only near the bottom',async()=>{
+ const {node,notify}=await boot('input'),area=node('inputHistory'),history=[{role:'assistant',content:'最初の返答'}];
+ area.clientHeight=100;area.scrollHeight=1000;area.scrollTop=900;notify({history});assert.equal(area.scrollTop,1000);
+ area.scrollTop=150;const first=area.children[0];notify({busy:true});assert.equal(area.children[0],first);assert.equal(area.scrollTop,150);
+ notify({history:[...history,{role:'user',content:'別ウィンドウから送信'},{role:'assistant',content:'返答'}],reply:'返答'});assert.equal(area.scrollTop,150);
+ area.scrollTop=900;notify({history:[...history,{role:'assistant',content:'次の返答'}],reply:'次の返答'});assert.equal(area.scrollTop,1000);
+ area.scrollTop=150;notify({settings:{...DEFAULTS,modelPath:'other.vrm'},history:[]});assert.equal(area.scrollTop,1000);
+});

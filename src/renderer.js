@@ -32,12 +32,17 @@ function setModels(models,selected,showList=false){
 }
 function invalidateModels(){modelRequest++;fetchingModels=false;$('fetchModels').textContent='モデル一覧を取得';$('fetchModels').disabled=busy;$('modelListLabel').hidden=true;status('connectionStatus','');}
 
-function renderHistory(){
- const area=$('history');area.replaceChildren();
+const historyViews=new WeakMap();
+function renderHistory(id='history',follow=false){
+ const area=$(id),key=JSON.stringify([state.settings.modelPath,state.relationship?.active]),previous=historyViews.get(area);
+ const signature=JSON.stringify([key,state.settings.name,state.history,pendingText]);
+ if(previous?.signature===signature)return;
+ const reset=!previous||previous.key!==key,atEnd=area.scrollHeight-area.scrollTop-area.clientHeight<48,top=area.scrollTop;
+ area.replaceChildren();
  const history=[...state.history];if(pendingText)history.push({role:'user',content:pendingText});
- if(!history.length){const p=document.createElement('p');p.className='empty';p.textContent='ここから、会話が始まります。\n「設定」でローカルLLMを選んで、\n相棒に話しかけてみましょう。';area.append(p);}
+ if(!history.length){const p=document.createElement('p');p.className='empty';p.textContent='ここから、会話が始まります。\n相棒に話しかけてみましょう。';area.append(p);}
  for(const m of history){const div=document.createElement('div');div.className='msg '+m.role;const name=document.createElement('span');name.className='speaker';name.textContent=m.role==='user'?'あなた':state.settings.name;div.append(name,document.createTextNode(m.content));area.append(div);}
- area.scrollTop=area.scrollHeight;
+ area.scrollTop=reset||follow||atEnd?area.scrollHeight:top;historyViews.set(area,{key,signature});
 }
 function renderRelationship(){
  const r=state.relationship;if(!r)return;
@@ -235,11 +240,11 @@ function initMascot(){
 function setInputBusy(){busy=!!state.busy;$('sendInput').disabled=busy;$('messageInput').disabled=busy;$('stopInput').hidden=!busy;}
 function focusInput(){if(!state.busy)$('messageInput').focus();}
 function initInput(){
- $('inputName').textContent=state.settings.name+'に話しかける';setInputBusy();
+ $('inputName').textContent=state.settings.name+'に話しかける';setInputBusy();renderHistory('inputHistory');
  $('inputForm').onsubmit=async e=>{e.preventDefault();if(state.busy)return;const text=$('messageInput').value.trim();if(!text)return;
-  state.busy=true;setInputBusy();status('inputStatus','返答を考えています…');
+  pendingText=text;state.busy=true;setInputBusy();renderHistory('inputHistory',true);status('inputStatus','返答を考えています…');
   try{await call(api.send(text));$('messageInput').value='';status('inputStatus','');}
-  catch(e){status('inputStatus',e.message,true);}finally{state.busy=false;setInputBusy();focusInput();}
+  catch(e){status('inputStatus',e.message,true);}finally{pendingText='';state.busy=false;setInputBusy();renderHistory('inputHistory');focusInput();}
  };
  $('messageInput').onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();api.action('close-input');}else if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('inputForm').requestSubmit();}};
  $('stopInput').onclick=wrap(async()=>{await call(api.cancel());},'inputStatus');
@@ -361,6 +366,7 @@ api.onUpdate(data=>{
   if(data.pass||data.settings&&(before.handDrag!==state.settings.handDrag||before.clothDrag!==state.settings.clothDrag||before.clothReach!==state.settings.clothReach||before.clothAngle!==state.settings.clothAngle||rotationChanged||before.scale!==state.settings.scale)){if(interacting||data.pass||rotationChanged||before.scale===state.settings.scale)cancelInteraction();cloth?.reset();hands?.reset();}
   if(renderer&&(before.scale!==state.settings.scale||rotationChanged))resizeViewport();
  }else if(view==='input'){
+  if(data.reply||data.reloadVRM)pendingText='';renderHistory('inputHistory');
   $('inputName').textContent=state.settings.name+'に話しかける';setInputBusy();if(data.focusInput)focusInput();
  }else if(view==='bubble'){
   if(data.bubbleSide)document.body.dataset.side=data.bubbleSide;

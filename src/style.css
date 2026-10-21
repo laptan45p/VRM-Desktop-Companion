@@ -9,3 +9,7 @@ body.input{background:#f7f5ee;margin:0}html.input-root{height:100%;overflow:hidd
 #avatar { touch-action: none; }
 
 .speech-heading{-webkit-app-region:drag;cursor:move;touch-action:none}.speech-heading button{-webkit-app-region:no-drag;cursor:pointer}#speechText{font-size:var(--bubble-font-size,13px);font-family:var(--bubble-font-family,'Yu Gothic UI'),Meiryo,system-ui,sans-serif}
+
+
+/* Conversation input keeps its composer visible while the log scrolls. */
+body.input{height:100vh;overflow:hidden}#inputPanel{height:100%;display:flex;flex-direction:column;gap:12px}#inputHistory{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:4px 3px 10px;scrollbar-gutter:stable}#inputHistory .msg{font-size:13px;padding:9px 12px}#inputHistory .empty{margin:auto 0;padding:20px 10px}#inputForm{flex-shrink:0;border-top:1px solid #dedfd4;padding-top:10px}

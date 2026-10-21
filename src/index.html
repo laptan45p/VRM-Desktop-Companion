@@ -15,7 +15,7 @@
  <footer>VRM Desktop Companion <span id="appVersion">Prototype</span></footer>
 </main>
 <div id="mascot" hidden><div id="avatar" title="左クリックで会話・右クリックでメニュー・ドラッグで移動"></div></div>
-<main id="inputPanel" hidden><form id="inputForm"><label id="inputName" for="messageInput">話しかける</label><textarea id="messageInput" maxlength="8000" rows="3" placeholder="何を話そう？（Enterで送信）" autofocus></textarea><div class="input-actions"><span id="inputStatus" role="status"></span><button id="stopInput" type="button" hidden>停止</button><button id="sendInput" class="primary">送信</button></div></form></main>
+<main id="inputPanel" hidden><div id="inputHistory" role="log" aria-label="会話ログ" aria-live="polite"></div><form id="inputForm"><label id="inputName" for="messageInput">話しかける</label><textarea id="messageInput" maxlength="8000" rows="3" placeholder="何を話そう？（Enterで送信）" autofocus></textarea><div class="input-actions"><span id="inputStatus" role="status"></span><button id="stopInput" type="button" hidden>停止</button><button id="sendInput" class="primary">送信</button></div></form></main>
 <div id="speechPanel" hidden><article id="speechCard"><header class="speech-heading"><span id="speechName"></span><button id="dismissSpeech" title="吹き出しを閉じる" aria-label="吹き出しを閉じる">×</button></header><div id="speechText" aria-live="polite"></div><div class="speech-rule"></div></article></div>
 <script src="layout.cjs"></script>
 <script src="motion.cjs"></script><script src="speech-audio.cjs"></script>

@@ -1,6 +1,6 @@
 {
   "name": "vrm-desktop-companion",
-  "version": "0.1.27",
+  "version": "0.1.28",
   "private": true,
   "description": "Desktop companion with local and cloud LLM support for Windows",
   "main": "src/main.cjs",
