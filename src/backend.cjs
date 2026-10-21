@@ -4,20 +4,20 @@ const path = require('node:path');
 const DEFAULTS = {
   provider: 'ollama', endpoint: 'http://127.0.0.1:11434', model: '',
   name: 'コンパニオン', persona: 'あなたはデスクトップに住む親しみやすい相棒です。日本語で自然に会話してください。返答は基本的に短く、相手の話をよく聞いてください。',
-  temperature: 0.7, historyTurns: 12, modelPath: '', scale: 1, angle: 0, angleX: 0, angleY: 0, angleZ: 0, topmost: true, inputX: null, inputY: null, lipSync: true, softIdle: true, motionStrength: 0.65, touchEnabled: true, clothDrag: true, handDrag: true, clothReach: .18, clothAngle: 80, touchZoneScale: 1, bubbleX: null, bubbleY: null, bubbleFont: 'Yu Gothic UI', bubbleFontSize: 13,
+  temperature: 0.7, historyTurns: 12, modelPath: '', motionFolder: '', greetingMotion: 'VRMA_02.vrma', randomMotion: true, motionInterval: 60, scale: 1, angle: 0, angleX: 0, angleY: 0, angleZ: 0, topmost: true, inputX: null, inputY: null, lipSync: true, softIdle: true, motionStrength: 0.65, touchEnabled: true, clothDrag: true, handDrag: true, clothReach: .18, clothAngle: 80, touchZoneScale: 1, bubbleX: null, bubbleY: null, bubbleFont: 'Yu Gothic UI', bubbleFontSize: 13,
 };
 function cleanSettings(input = {}) {
   const s = { ...DEFAULTS };
-  for (const k of ['provider','endpoint','model','name','persona','modelPath','bubbleFont']) if (typeof input[k] === 'string') s[k] = input[k].slice(0, k === 'persona' ? 12000 : 2000);
+  for (const k of ['provider','endpoint','model','name','persona','modelPath','bubbleFont','motionFolder','greetingMotion']) if (typeof input[k] === 'string') s[k] = input[k].slice(0, k === 'persona' ? 12000 : 2000);
   if (!['ollama', 'lmstudio'].includes(s.provider)) throw new Error('接続方式を選んでください。');
-  for (const [k,min,max] of [['temperature',0,2],['historyTurns',1,40],['scale',0.5,10.0],['angle',-180,180],['angleX',-180,180],['angleY',-180,180],['angleZ',-180,180],['motionStrength',0,1],['touchZoneScale',.75,1.4],['bubbleFontSize',8,72],['clothReach',.02,.5],['clothAngle',10,120]]) {
+  for (const [k,min,max] of [['temperature',0,2],['historyTurns',1,40],['scale',0.5,10.0],['angle',-180,180],['angleX',-180,180],['angleY',-180,180],['angleZ',-180,180],['motionStrength',0,1],['touchZoneScale',.75,1.4],['bubbleFontSize',8,72],['clothReach',.02,.5],['clothAngle',10,120],['motionInterval',10,3600]]) {
     if (Number.isFinite(Number(input[k]))) s[k] = Math.max(min, Math.min(max, Number(input[k])));
   }
   for(const k of ['inputX','inputY','bubbleX','bubbleY'])if(typeof input[k]==='number'&&Number.isFinite(input[k]))s[k]=Math.round(Math.max(-100000,Math.min(100000,input[k])));
   if(!Object.prototype.hasOwnProperty.call(input,'angleY'))s.angleY=s.angle;
   s.angle=s.angleY; // Retain the legacy Y axis alias.
   s.historyTurns = Math.round(s.historyTurns);
-  for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag'])if(typeof input[k]==='boolean')s[k]=input[k];
+  for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion'])if(typeof input[k]==='boolean')s[k]=input[k];
   return s;
 }
 function localBase(endpoint) {

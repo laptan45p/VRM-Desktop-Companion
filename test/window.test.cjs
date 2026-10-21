@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{EventEmitter}=require('node:events');
 const {cleanSettings,DEFAULTS}=require('../src/backend.cjs');const layout=require('../src/layout.cjs');
-async function boot(saved={},touchGenerate=async()=>'LLMの反応'){
+async function boot(saved={},touchGenerate=async()=>'LLMの反応',motionFiles=null){
  const area={x:-1600,y:0,width:1600,height:900},handlers=new Map(),windows=[],screen=new EventEmitter(),app=new EventEmitter(),menus=[],trays=[],timers=[];
  Object.assign(app,{requestSingleInstanceLock:()=>true,whenReady:()=>Promise.resolve(),getPath:()=>'/test-data',setAppUserModelId:()=>{},quit:()=>{}});
  screen.getPrimaryDisplay=()=>({workArea:area});screen.getDisplayMatching=()=>({workArea:area});screen.getAllDisplays=()=>[{workArea:area}];
@@ -9,8 +9,8 @@ async function boot(saved={},touchGenerate=async()=>'LLMの反応'){
   async loadFile(){}getBounds(){return {...this.bounds};}setBounds(b){this.bounds={...b};}isDestroyed(){return false;}setAlwaysOnTop(v){this.topmost=v;}setIgnoreMouseEvents(v){this.ignore=v;}show(){this.visible=true;}showInactive(){this.visible=true;}hide(){this.visible=false;}focus(){this.focused=true;}
  }
  class Store{constructor(){this.file='/test-data/companion.json';this.data={settings:{...DEFAULTS,scale:.5,...saved},history:[]};}load(){}save(){}}
- const electron={app,BrowserWindow:Window,ipcMain:{handle:(k,v)=>handlers.set(k,v)},dialog:{},Menu:{buildFromTemplate:v=>{const m={items:v,popup:()=>{m.opened=true;}};menus.push(m);return m;}},Tray:class extends EventEmitter{constructor(){super();trays.push(this);}setToolTip(){}popUpContextMenu(m){this.menu=m;}},nativeImage:{createFromPath:()=>({})},globalShortcut:{register:()=>true,unregisterAll:()=>{}},screen};
- const context={require:p=>p==='electron'?electron:p==='./backend.cjs'?{Store,cleanSettings,chat:async(_s,_h,t)=>'返事：'+t,touchReply:touchGenerate}:p==='./layout.cjs'?layout:p==='./interaction.cjs'?require('../src/interaction.cjs'):p==='./touch-response.cjs'?{TouchResponder:class extends require('../src/touch-response.cjs').TouchResponder{constructor(options){super({...options,setTimer:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimer:()=>{}});}}}:require(p),__dirname:path.resolve(__dirname,'../src'),AbortController,console,setTimeout:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimeout:()=>{}};
+ const electron={app,BrowserWindow:Window,ipcMain:{handle:(k,v)=>handlers.set(k,v)},dialog:{showOpenDialog:async()=>({canceled:false,filePaths:['/motions']})},Menu:{buildFromTemplate:v=>{const m={items:v,popup:()=>{m.opened=true;}};menus.push(m);return m;}},Tray:class extends EventEmitter{constructor(){super();trays.push(this);}setToolTip(){}popUpContextMenu(m){this.menu=m;}},nativeImage:{createFromPath:()=>({})},globalShortcut:{register:()=>true,unregisterAll:()=>{}},screen};
+ const context={require:p=>p==='electron'?electron:p==='./vrma-files.cjs'?(motionFiles||require('../src/vrma-files.cjs')):p==='./backend.cjs'?{Store,cleanSettings,chat:async(_s,_h,t)=>'返事：'+t,touchReply:touchGenerate}:p==='./layout.cjs'?layout:p==='./interaction.cjs'?require('../src/interaction.cjs'):p==='./touch-response.cjs'?{TouchResponder:class extends require('../src/touch-response.cjs').TouchResponder{constructor(options){super({...options,setTimer:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimer:()=>{}});}}}:require(p),__dirname:path.resolve(__dirname,'../src'),AbortController,console,setTimeout:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimeout:()=>{}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8'),context);await new Promise(r=>setImmediate(r));
  const invoke=(channel,...args)=>handlers.get(channel)({sender:windows[0].webContents},...args);
  const as=(i,channel,...args)=>handlers.get(channel)({sender:windows[i].webContents},...args);
@@ -99,4 +99,10 @@ test('orientation IPC validates mascot sender, persists angles and leaves window
  assert.equal((await invoke('orientation',angles)).ok,false);for(const value of [NaN,181])assert.equal((await as(1,'orientation',{...angles,angleX:value})).ok,false);
  assert.equal((await as(1,'orientation',angles)).ok,true);const s=(await invoke('state')).data.settings;assert.equal(s.angle,80);assert.deepEqual(windows.map(w=>w.getBounds()),bounds);const next=await boot(s);assert.equal((await next.invoke('state')).data.settings.angleZ,-25);
  await invoke('action','pass');await as(1,'orientation',{...angles,angleZ:100});assert.equal((await invoke('state')).data.settings.angleZ,-25);
+});
+
+test('motion folder selection persists and only mascot can read selected motions',async()=>{
+ const mock={findFolder:async folder=>folder+'/vrma',catalog:async()=>['VRMA_01.vrma','VRMA_02.vrma'],readMotion:async(folder,name)=>{assert.equal(folder,'/motions/vrma');assert.equal(name,'VRMA_02.vrma');return new Uint8Array([1,2]);}},b=await boot({},undefined,mock);
+ assert.equal((await b.as(1,'choose-motions')).ok,false);assert.equal((await b.invoke('choose-motions')).ok,true);let s=(await b.invoke('state')).data.settings;assert.equal(s.motionFolder,'/motions/vrma');assert.equal(s.greetingMotion,'VRMA_02.vrma');assert.ok(b.windows[1].events.some(e=>e.reloadMotions));assert.equal((await b.invoke('motion-data','VRMA_02.vrma')).ok,false);assert.equal((await b.as(1,'motion-data','VRMA_02.vrma')).ok,true);
+ await b.invoke('save',{...s,motionFolder:'/other',motionInterval:120,randomMotion:false});s=(await b.invoke('state')).data.settings;assert.equal(s.motionFolder,'/motions/vrma');assert.equal(s.motionInterval,120);assert.equal(s.randomMotion,false);
 });

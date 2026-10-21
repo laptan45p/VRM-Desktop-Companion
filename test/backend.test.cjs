@@ -58,3 +58,8 @@ test('legacy Y orientation migrates and XYZ settings persist',()=>{
  assert.equal(cleanSettings({angle:75}).angleY,75);const s=cleanSettings({angle:-10,angleX:300,angleY:25,angleZ:-300});assert.equal(s.angleX,180);assert.equal(s.angleY,25);assert.equal(s.angleZ,-180);assert.equal(s.angle,25);
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'orientation-'));try{const store=new Store(dir);store.data.settings=s;store.save();const next=new Store(dir);next.load();assert.deepEqual(next.data.settings,s);}finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('motion settings default to 60 seconds and survive persistence with interval bounds',()=>{
+ assert.equal(DEFAULTS.motionInterval,60);assert.equal(DEFAULTS.randomMotion,true);assert.equal(DEFAULTS.greetingMotion,'VRMA_02.vrma');assert.equal(cleanSettings({motionInterval:1}).motionInterval,10);assert.equal(cleanSettings({motionInterval:99999}).motionInterval,3600);assert.equal(cleanSettings({motionInterval:'bad'}).motionInterval,60);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'motion-settings-'));try{const a=new Store(dir);a.data.settings=cleanSettings({motionFolder:'/motions',greetingMotion:'hi.vrma',motionInterval:120,randomMotion:false});a.save();const b=new Store(dir);b.load();assert.deepEqual(b.data.settings,a.data.settings);}finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

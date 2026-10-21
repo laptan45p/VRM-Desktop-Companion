@@ -1,4 +1,5 @@
 'use strict';
+const motionFiles=require('./vrma-files.cjs');
 const {ReactionCounter}=require('./interaction.cjs');
 const reactions=new ReactionCounter();
 const {TouchResponder}=require('./touch-response.cjs');
@@ -11,7 +12,7 @@ const touchResponses=new TouchResponder({generate:touchReply,publish:(text,react
 const gotLock=app.requestSingleInstanceLock();if(!gotLock)app.quit();
 const allWindows=()=>[control,mascot,input,bubble].filter(w=>w&&!w.isDestroyed());
 function result(fn){return async(...args)=>{try{return {ok:true,data:await fn(...args)};}catch(e){return {ok:false,error:e.message};}};}
-function broadcast(extra={}){for(const w of allWindows())w.webContents.send('update',{settings:store.data.settings,history:store.data.history,busy:!!active,pass,...extra});}
+function broadcast(extra={}){for(const w of allWindows())w.webContents.send('update',{settings:store.data.settings,history:store.data.history,busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,...extra});}
 function area(){return screen.getDisplayMatching(mascot.getBounds()).workArea;}
 function positionPopups(){
  if(!mascot)return;const r=area(),m=mascot.getBounds();
@@ -34,7 +35,7 @@ function resizeMascot(reset=false){
 function applyHit(){if(mascot&&!mascot.isDestroyed())mascot.setIgnoreMouseEvents(pass||(!hovered&&!drag),{forward:true});}
 function setPass(value){touchResponses.cancel();pass=!!value;drag=null;applyHit();broadcast();}
 function resetMascot(){resizeMascot(true);mascot.show();setPass(false);}
-function hideMascot(){touchResponses.cancel();mascot.hide();bubble.hide();input.hide();drag=null;applyHit();}
+function hideMascot(){touchResponses.cancel();mascot.hide();bubble.hide();input.hide();drag=null;applyHit();broadcast({mascotVisible:false});}
 function hideSpeech(){touchResponses.cancel();clearTimeout(speechTimer);speechTimer=null;speech='';bubble.hide();broadcast({speech:''});}
 function speak(text,{thinking=false,touch=false}={}){
  if(!touch)touchResponses.cancel();
@@ -54,7 +55,7 @@ function menu(){return Menu.buildFromTemplate([
  {label:'会話履歴',click:()=>showControl('chat')},
  {label:'VRMを選ぶ',click:()=>selectVRM().catch(e=>speak(e.message))},
  {type:'separator'},
- {label:'マスコットを表示',click:()=>{mascot.show();applyHit();}},
+ {label:'マスコットを表示',click:()=>{mascot.show();applyHit();broadcast({mascotVisible:true});}},
  {label:'マスコットを隠す',click:hideMascot},
  {label:'位置をリセット',click:resetMascot},
  {label:'クリック操作を無効にする（Ctrl+Alt+M）',type:'checkbox',checked:pass,click:()=>setPass(!pass)},
@@ -100,13 +101,21 @@ app.on('second-instance',()=>{if(input)showInput();});
 app.on('before-quit',()=>{app.isQuitting=true;touchResponses.cancel();active?.abort();clearTimeout(speechTimer);if(inputSaveTimer){clearTimeout(inputSaveTimer);try{store.save();}catch{}}});
 app.on('will-quit',()=>globalShortcut.unregisterAll());app.on('window-all-closed',()=>app.quit());
 function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=>{if(!allWindows().some(w=>w.webContents===e.sender)||only&&e.sender!==only()?.webContents)throw new Error('不明なウィンドウです。');return fn(...args);}));}
-handle('state',()=>({...store.data,busy:!!active,pass,startupError,dataPath:store.file,speech}));
+handle('state',()=>({...store.data,busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech}));
 handle('save',settings=>{
  if(active)throw new Error('生成を停止してから設定を変更してください。');
  touchResponses.cancel();
- store.data.settings=cleanSettings({...settings,modelPath:store.data.settings.modelPath,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY,bubbleX:store.data.settings.bubbleX,bubbleY:store.data.settings.bubbleY});store.save();
+ store.data.settings=cleanSettings({...settings,modelPath:store.data.settings.modelPath,motionFolder:store.data.settings.motionFolder,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY,bubbleX:store.data.settings.bubbleX,bubbleY:store.data.settings.bubbleY});store.save();
  for(const w of [mascot,input,bubble])w.setAlwaysOnTop(store.data.settings.topmost);resizeMascot();broadcast();return store.data.settings;
 });
+handle('choose-motions',async()=>{
+ const r=await dialog.showOpenDialog(control,{title:'VRMAモーションフォルダーを選択',properties:['openDirectory']});if(r.canceled)return null;
+ const folder=await motionFiles.findFolder(r.filePaths[0]),names=await motionFiles.catalog(folder),previous=store.data.settings;
+ store.data.settings={...previous,motionFolder:folder,greetingMotion:names.includes(previous.greetingMotion)?previous.greetingMotion:names.find(n=>/02|greet|挨拶/i.test(n))||names[0]};
+ try{store.save();}catch(e){store.data.settings=previous;throw e;}broadcast({reloadMotions:true});return names;
+},()=>control);
+handle('motion-list',()=>motionFiles.catalog(store.data.settings.motionFolder));
+handle('motion-data',name=>motionFiles.readMotion(store.data.settings.motionFolder,name),()=>mascot);
 handle('models',s=>listModels(cleanSettings(s)));handle('choose-vrm',selectVRM);
 handle('vrm',async()=>{const p=store.data.settings.modelPath;if(!p)return null;if((await fs.stat(p)).size>300*1024*1024)throw new Error('VRMが300MBを超えています。');return new Uint8Array(await fs.readFile(p));});
 handle('touch',(region,gesture)=>{

@@ -1,6 +1,6 @@
 {
   "name": "vrm-desktop-companion",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "private": true,
   "description": "Local LLM desktop companion prototype for Windows",
   "main": "src/main.cjs",
@@ -13,12 +13,12 @@
   },
   "dependencies": {
     "@pixiv/three-vrm": "3.5.5",
+    "@pixiv/three-vrm-animation": "3.5.5",
     "three": "0.186.1"
   },
   "devDependencies": {
+    "@electron/packager": "19.0.1",
     "electron": "44.9.1",
-    "esbuild": "0.25.12",
-    "@electron/packager": "19.0.1"
+    "esbuild": "0.25.12"
   }
 }
-

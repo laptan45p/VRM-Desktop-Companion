@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
 (() => {
 const api=window.companion,$=id=>document.getElementById(id);
 const view=new URLSearchParams(location.search).get('view')||'control',isMascot=view==='mascot';
@@ -11,8 +12,11 @@ function status(id,text,error=false){$(id).textContent=text;$(id).classList.togg
 async function call(promise){const r=await promise;if(!r.ok)throw new Error(r.error);return r.data;}
 function wrap(fn,id='chatStatus'){return async(...args)=>{try{await fn(...args);}catch(e){status(id,e.message,true);}};}
 function selectControlTab(which){const chat=which==='chat';$('chatView').hidden=!chat;$('settingsView').hidden=chat;$('chatTab').classList.toggle('selected',chat);$('settingsTab').classList.toggle('selected',!chat);}
-function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona','bubbleFont'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag'])s[k]=$(k).checked;s.clothReach=Number($('clothReach').value)/100;return s;}
-function fillSettings(s){for(const id of ['provider','endpoint','name','persona','bubbleFont','temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag'])$(k).checked=s[k];$('clothReach').value=Math.round(s.clothReach*100);setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';}
+function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona','bubbleFont','greetingMotion'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion'])s[k]=$(k).checked;s.clothReach=Number($('clothReach').value)/100;return s;}
+function fillSettings(s){for(const id of ['provider','endpoint','name','persona','bubbleFont','temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion'])$(k).checked=s[k];$('clothReach').value=Math.round(s.clothReach*100);setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';$('motionPath').textContent=s.motionFolder||'モーション未選択';setMotionOptions(motionNames,s.greetingMotion);}
+let motionNames=[];
+function setMotionOptions(names,selected){motionNames=names;const el=$('greetingMotion');el.replaceChildren();for(const name of names)el.add(new Option(name,name));if(!names.includes(selected))el.add(new Option(selected||'VRMA_02.vrma',selected||'VRMA_02.vrma'));el.value=selected||'VRMA_02.vrma';}
+async function refreshMotionOptions(){try{const names=await call(api.motionList());setMotionOptions(names,dirty?$('greetingMotion').value:state.settings.greetingMotion);}catch(e){status('motionStatus',e.message,true);}}
 function setModels(models,selected){$('model').replaceChildren();if(!models.length){const o=new Option('モデルがありません','');$('model').add(o);}for(const m of models)$('model').add(new Option(m,m));if(models.includes(selected))$('model').value=selected;}
 function renderHistory(){
  const area=$('history');area.replaceChildren();
@@ -23,7 +27,7 @@ function renderHistory(){
 }
 function updateBusy(value){busy=value;$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear','fetchModels'])$(id).disabled=busy;}
 async function initControl(){
- fillSettings(state.settings);$('dataPath').textContent='設定と履歴：'+state.dataPath;
+ fillSettings(state.settings);refreshMotionOptions();$('chooseMotions').onclick=wrap(async()=>{const names=await call(api.chooseMotions());if(names){await refreshMotionOptions();$('motionPath').textContent=state.settings.motionFolder;status('motionStatus',names.length+'件のモーションを登録しました。');}},'motionStatus');$('dataPath').textContent='設定と履歴：'+state.dataPath;
  const tabs=selectControlTab;
  $('chatTab').onclick=()=>tabs('chat');$('settingsTab').onclick=()=>tabs('settings');
  $('settingsForm').oninput=()=>{dirty=true;};
@@ -49,6 +53,33 @@ async function initControl(){
 }
 let scene,camera,renderer,vrm,demoRoot,modelRoot,clock,elapsed=0,loadId=0,moodUntil=0,blinkAt=2,blinkStart=-10;
 let rest=new Map(),cloth=null,hands=null,orientationPreview=null,cancelInteraction=()=>{};
+const motionPlayer=new window.companionVrma.VrmaPlayer(THREE);
+let motionGeneration=0,interacting=false,motionHoldUntil=0;
+async function loadMotions(){
+ const generation=++motionGeneration,target=vrm;if(!target)return;
+ motionPlayer.bind(target);motionPlayer.configure(state.settings,elapsed);
+ try{
+  const names=await call(api.motionList()),clips=new Map(),failures=[];
+  for(const name of names){
+   if(generation!==motionGeneration||target!==vrm)return;
+   try{
+    const bytes=await call(api.motionData(name));if(generation!==motionGeneration||target!==vrm)return;
+    const loader=new GLTFLoader();loader.register(parser=>new VRMAnimationLoaderPlugin(parser));
+    const gltf=await loader.parseAsync(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'');
+    if(generation!==motionGeneration||target!==vrm)return;
+    const animation=gltf.userData.vrmAnimations?.[0];if(!animation)throw new Error('アニメーションがありません');
+    const clip=createVRMAnimationClip(animation,target);if(!Number.isFinite(clip.duration)||clip.duration<=0)throw new Error('長さが不正です');
+    // Keep horizontal travel inside the mascot window; preserve vertical movements such as squats.
+    const hips=target.humanoid.getNormalizedBoneNode('hips');
+    for(const track of clip.tracks)if(track.name===hips?.name+'.position'||track.name===hips?.uuid+'.position')for(let i=0;i<track.values.length;i+=3){track.values[i]=hips.position.x;track.values[i+2]=hips.position.z;}
+    clips.set(name,clip);
+   }catch(e){failures.push(name+'：'+e.message);}
+  }
+  if(generation!==motionGeneration||target!==vrm)return;
+  motionPlayer.install(clips,elapsed);fitModel(target.scene);
+  if(failures.length)api.modelStatus('一部のモーションを読み込めません：'+failures.join(' / ').slice(0,500));
+ }catch(e){if(generation===motionGeneration)api.modelStatus('モーションを読み込めません：'+e.message);}
+}
 const modelOrientation=new window.companionOrientation.ModelOrientation(THREE.Vector3,THREE.Box3);
 const picking=new window.companionPicking.MeshPicking(THREE.Vector3);
 const lips=new window.companionMotion.LipMotion(),idle=new window.companionMotion.SoftIdle(),reactionMotion=new window.companionMotion.ReactionMotion();
@@ -82,6 +113,7 @@ function fitModel(root){
  const center=modelOrientation.center(root),size=new THREE.Vector3();
  // Frame around the fixed pivot instead of moving the target with the rotated bounds.
  for(const axis of ['x','y','z'])size[axis]=2*Math.max(Math.abs(box.min[axis]-center[axis]),Math.abs(box.max[axis]-center[axis]));
+ if(motionPlayer.clips.size)size.multiplyScalar(1.35);
  const distance=window.companionLayout.fitDistance(size,camera.fov,camera.aspect);
  camera.position.set(center.x,center.y,center.z+distance);
  camera.far=Math.max(100,distance+size.z*2+size.y*2);
@@ -96,7 +128,7 @@ function resizeViewport(){
  fitModel(vrm?.scene||demoRoot);
 }
 async function loadVRM(announce=false){
- cancelInteraction();
+ cancelInteraction();++motionGeneration;motionPlayer.dispose();
  const id=++loadId;
  if(!state.settings.modelPath)return;
  
@@ -120,7 +152,7 @@ async function loadVRM(announce=false){
  cloth?.reset();hands?.reset();
  disposeRoot(modelRoot);disposeRoot(demoRoot);demoRoot=null;vrm=candidate;modelRoot=vrm.scene;scene.add(modelRoot);
  rest=window.companionMotion.capturePose(vrm);lips.stop();cloth=new window.companionCloth.ClothDrag(vrm,THREE.Vector3,state.settings);hands=new window.companionHand.HandDrag(vrm,THREE.Vector3);
- applyOrientation(modelRoot);fitModel(modelRoot);
+ applyOrientation(modelRoot);fitModel(modelRoot);loadMotions();
  if(announce)api.modelStatus('準備できたよ。話しかけてね。');
  }catch(e){if(candidate&&candidate!==vrm)VRMUtils.deepDispose(candidate.scene);api.modelStatus('VRMを読み込めませんでした：'+e.message);}
 }
@@ -139,8 +171,9 @@ function initMascot(){
  const root=vrm?.scene||demoRoot;
  if(root)applyOrientation(root);
  if(vrm){
- cloth?.restore();hands?.restore();
+ cloth?.restore();hands?.restore();motionPlayer.restorePose();
  idle.update(vrm,rest,elapsed,dt,{enabled:state.settings.softIdle,strength:state.settings.motionStrength,thinking:state.busy});
+ motionPlayer.update(dt,elapsed,{blocked:interacting||elapsed<motionHoldUntil||state.busy||state.mascotVisible===false,speaking:lips.active(performance.now()/1000)});
  const talking=lips.update(vrm,performance.now()/1000,dt,state.settings.lipSync);
  if(elapsed>=blinkAt){blinkStart=elapsed;blinkAt=elapsed+2.5+Math.random()*3;}
  const p=(elapsed-blinkStart)/.18;const blink=p>=0&&p<1?Math.sin(p*Math.PI):0;
@@ -201,6 +234,7 @@ function initCharacterMouse(){
  }
  el.onpointerdown=e=>{
   if(down||e.button!==0||e.isPrimary===false||state.pass)return;const target=hit(e);if(!target)return;
+  interacting=true;motionPlayer.interrupt(elapsed);
   const rotate=!!e.ctrlKey;if(rotate){cloth?.reset();hands?.reset();}
   const handGrab=!rotate&&!e.shiftKey&&state.settings.handDrag&&hands?.begin(target);
   const grab=!rotate&&!handGrab&&!e.shiftKey&&state.settings.clothDrag&&cloth?.begin(target);
@@ -224,7 +258,7 @@ function initCharacterMouse(){
   if(down.moved)api.drag('move',e.screenX,e.screenY);
  };
  el.onpointerup=e=>{
-  if(!down||e.pointerId!==down.id)return;track(e);const previous=down;down=null;
+  if(!down||e.pointerId!==down.id)return;track(e);const previous=down;down=null;interacting=false;motionHoldUntil=elapsed+.4;
   if(el.hasPointerCapture(e.pointerId))el.releasePointerCapture(e.pointerId);
   if(previous.rotate){
    const angles=orientationPreview;orientationPreview=null;
@@ -246,7 +280,7 @@ function initCharacterMouse(){
   }else if(previous.moved)api.drag('end',e.screenX,e.screenY);else api.action('talk');
   over=!!hit(e);api.hit(over);
  };
- function cancel(){if(orientationPreview){orientationPreview=null;fitModel(vrm?.scene||demoRoot);}cloth?.release();hands?.release();if(down){down=null;api.drag('end',0,0);}over=false;api.hit(false);}
+ function cancel(){interacting=false;motionPlayer.interrupt(elapsed);if(orientationPreview){orientationPreview=null;fitModel(vrm?.scene||demoRoot);}cloth?.release();hands?.release();if(down){down=null;api.drag('end',0,0);}over=false;api.hit(false);}
  cancelInteraction=cancel;
  el.onpointercancel=cancel;el.onlostpointercapture=()=>{if(down)cancel();};window.addEventListener('blur',cancel);
  el.oncontextmenu=e=>{e.preventDefault();if(!state.pass&&hit(e)){cancel();api.action('menu');}};
@@ -257,6 +291,10 @@ api.onUpdate(data=>{
  const rotationChanged=['angleX','angleY','angleZ'].some(k=>before[k]!==state.settings[k]);
  if(isMascot){
   if(data.reply||data.greeting)moodUntil=elapsed+4;
+  if(data.greeting)motionPlayer.greet();
+  if(data.reaction){motionPlayer.interrupt(elapsed);motionHoldUntil=elapsed+3.5;}
+  if(data.settings)motionPlayer.configure(state.settings,elapsed);
+  if(data.reloadMotions)loadMotions();
   if(data.reaction)reactionMotion.trigger(data.reaction.emotion,performance.now()/1000);
   if(data.speech!==undefined){if(data.speech&&!data.thinking)lips.play(data.speech,performance.now()/1000);else if(!data.speech)lips.stop();}
   if(data.reloadVRM)loadVRM(true);
@@ -269,6 +307,7 @@ api.onUpdate(data=>{
   if(data.bubbleSide)document.body.dataset.side=data.bubbleSide;
   if(data.speech!==undefined||data.settings)updateSpeech(data.speech);
  }else{
+  if(data.reloadMotions)refreshMotionOptions();
   if(!dirty)fillSettings(state.settings);else if(rotationChanged)for(const k of ['angleX','angleY','angleZ'])$(k).value=state.settings[k];$('companionName').textContent=state.settings.name;$('modelBadge').textContent=state.settings.model||'モデル未選択';
   if(data.reply)pendingText='';renderHistory();updateBusy(state.busy);if(data.controlTab)selectControlTab(data.controlTab);
  }

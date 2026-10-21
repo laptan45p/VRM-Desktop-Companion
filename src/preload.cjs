@@ -2,6 +2,9 @@ const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('companion', {
   state:()=>ipcRenderer.invoke('state'),
   save:s=>ipcRenderer.invoke('save',s),
+  chooseMotions:()=>ipcRenderer.invoke('choose-motions'),
+  motionList:()=>ipcRenderer.invoke('motion-list'),
+  motionData:name=>ipcRenderer.invoke('motion-data',name),
   models:s=>ipcRenderer.invoke('models',s),
   chooseVRM:()=>ipcRenderer.invoke('choose-vrm'),
   vrm:()=>ipcRenderer.invoke('vrm'),
