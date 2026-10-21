@@ -159,6 +159,6 @@ test('Ctrl wheel zoom requires a character hit, normalizes wheel modes and never
  el.onwheel({...e,clientX:0,clientY:0});el.onwheel({...e,deltaY:NaN});notify({pass:true});el.onwheel(e);assert.equal(calls.filter(c=>c[0]==='zoom').length,before);
  notify({pass:false});el.onpointerdown({...e,button:0,pointerId:1,screenX:100,screenY:100});el.onwheel(e);assert.equal(calls.filter(c=>c[0]==='zoom').length,before);el.onpointercancel();listeners.mousemove(e);const hitCount=calls.filter(c=>c[0]==='hit'&&c[1]===false).length;notify({settings:{...DEFAULTS,scale:1.2}});assert.equal(calls.filter(c=>c[0]==='hit'&&c[1]===false).length,hitCount);
 });
-test('external wheel scale updates settings slider without discarding unsaved persona edits',async()=>{
- const {node,notify}=await boot('control');node('persona').value='編集中';node('settingsForm').oninput({target:node('persona')});notify({settings:{...DEFAULTS,scale:2.5}});assert.equal(node('scale').value,2.5);assert.equal(node('persona').value,'編集中');
+test('external wheel scale updates numeric settings without discarding unsaved persona edits',async()=>{
+ const {node,notify,calls}=await boot('control');node('persona').value='編集中';node('settingsForm').oninput({target:node('persona')});notify({settings:{...DEFAULTS,scale:2.5}});assert.equal(node('scale').value,2.5);assert.equal(node('persona').value,'編集中');node('scale').value='2.125';await node('settingsForm').onsubmit({preventDefault(){}});assert.equal(calls.find(c=>c[0]==='save')[1].scale,2.125);
 });

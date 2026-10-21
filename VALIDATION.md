@@ -1,10 +1,11 @@
-# Validation — 0.1.21
+# Validation — 0.1.22
 
 125 tests passed after a fresh dependency install and renderer build:
 
 - Ctrl-wheel mesh hit requirement, normal-wheel exclusion, pixel/line/page delta normalization and malformed delta rejection.
 - Mascot-only zoom IPC, cumulative latest-scale updates, limits, restart settings, unchanged popup bounds and stable center/bottom through repeated zooms.
-- External wheel scale updates the slider while retaining unsaved persona edits; zoom broadcasts retain hover eligibility for continued wheel use.
+- Numeric scale input supports the 0.001 increments used by wheel zoom; direct numeric edits are included in settings saves.
+- External wheel scale updates the numeric field while retaining unsaved persona edits; zoom broadcasts retain hover eligibility for continued wheel use.
 - OpenRouter fixed endpoint and independent key scope, text model discovery, manual model IDs, max_tokens and nested reasoning settings.
 - OpenRouter successful chat/touch requests, relationship context, HTTP 200/402/429/503 error redaction and no automatic retries.
 - OpenRouter settings preset, help visibility, API-key registration/clearing, model save and main-process integration without key leakage.
