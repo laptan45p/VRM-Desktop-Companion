@@ -1,0 +1,31 @@
+name: Refresh release notes
+on:
+  workflow_dispatch:
+  push:
+    branches: ['maintenance/release-notes']
+permissions:
+  contents: write
+concurrency:
+  group: refresh-release-notes
+  cancel-in-progress: false
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate notes for the current version
+        run: |
+          version=$(python -c "import json; print(json.load(open('package.json'))['version'])")
+          python scripts/release_notes.py --version "$version" --output release-notes.md
+          echo "RELEASE_TAG=v$version" >> "$GITHUB_ENV"
+      - name: Update only the existing release description
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view "$RELEASE_TAG" --json tagName
+          gh release edit "$RELEASE_TAG" --notes-file release-notes.md

@@ -4,7 +4,18 @@ test('all release archives include both TTS wrappers and their helper in the run
  try{
   const runtime=path.join(temp,'runtime'),output=path.join(temp,'out');fs.mkdirSync(runtime);fs.writeFileSync(path.join(runtime,'VRM-Desktop-Companion.exe'),'packaging fixture only');
   execFileSync(python,[path.join(root,'scripts/package_release.py'),'--runtime',runtime,'--output',output],{cwd:root,stdio:'pipe'});
-  const report=execFileSync(python,['-c',`import pathlib,sys,zipfile,json
+  const report=execFileSync(python,['-c',`import pathlib,sys,zipfile,json,runpy
+notes=pathlib.Path(sys.argv[1],'notes.md').read_text(encoding='utf-8')
+assert '## 今回の変更点' in notes and '## 更新方法' in notes
+release_notes=runpy.run_path(str(pathlib.Path(sys.argv[2],'scripts/release_notes.py')))['release_notes']
+sample=release_notes('9.8.7','## 未リリース\\n\\n未公開の変更\\n\\n## 9.8.7\\n\\n今回だけの変更\\n\\n## 9.8.6\\n\\n過去の変更\\n')
+assert '今回だけの変更' in sample and '過去の変更' not in sample and '未公開の変更' not in sample
+try:
+ release_notes('9.8.70','## 9.8.7\\n\\n別の版\\n')
+except ValueError:
+ pass
+else:
+ raise AssertionError('Missing version must fail rather than publish unrelated notes')
 report=[]
 for file in pathlib.Path(sys.argv[1]).glob('*.zip'):
  with zipfile.ZipFile(file) as z:
@@ -18,7 +29,7 @@ for file in pathlib.Path(sys.argv[1]).glob('*.zip'):
    assert z.read(docs+name).decode('utf-8').strip()
   assert not any('Irodori-TTS-Server/.venv' in n or '/tts-logs/' in n for n in z.namelist())
   report.append(file.name)
-print(json.dumps(report))`,output],{encoding:'utf8'});
+print(json.dumps(report))`,output,root],{encoding:'utf8'});
   assert.equal(JSON.parse(report).length,3);
  }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });

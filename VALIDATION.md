@@ -1,148 +1,152 @@
-# Validation — 0.1.28
+# 検証記録 — 0.1.28
 
-140 tests passed with the existing pinned dependencies and a fresh renderer build:
+固定済みの依存関係を使用し、描画コードを再ビルドしたうえで、140件の自動テストが合格しました。
 
-- Input conversation log uses plain text, displays saved and pending messages without reply duplication, preserves failed drafts, and follows character/history changes.
-- Enlarged input window recovers the full composer on-screen when upgrading from a saved position near the bottom.
-- Input log retains scroll position while reading and during unrelated broadcasts; near-bottom readers follow new replies. Windows desktop visual checks remain manual.
-- Per-VRM voice bindings migrate legacy settings, survive persistence/restart, normalize Windows paths, reject invalid entries and isolate demo/real models.
-- Switching VRMs restores embeddings, prompts for an unregistered voice and cancels stale audio before it can publish under the new model.
-- Voice-path labels update during VRM changes without discarding unsaved persona edits.
-- Successful conversation submission keeps the input window open, clears sent text, restores focus and accepts a second message; failure retains text and Escape still closes.
-- Release archive smoke test checks both TTS wrappers and the UTF-8 BOM PowerShell helper in portable/update/source roots, CRLF wrappers and absence of installed TTS environments/logs.
-- Windows PowerShell helper smoke tests cover quoted paths with spaces/Japanese, clone and CUDA/Python sync arguments, dedicated environment/model, reinstall settings preservation, foreign-repository rejection, loopback launch, local-checkpoint override, occupied ports and sync failure handling.
-- All four window positions survive settings saves and restart; startup retains the mascot-only display style.
-- Quit captures final positions synchronously without relying on pending move timers, and uses normal bounds for a maximized control window.
-- Monitor-layout persistence, legacy defaults, malformed bounds filtering, removed-display recovery and deliberate off-screen mascot placement on an unchanged layout.
-- OpenAI/OpenRouter model-list buttons show immediate progress, retain disabled status during unrelated updates, prevent duplicate requests and expose selectable results.
-- Model-list selection persists the chosen ID; missing-key errors, empty responses and stale results after provider changes have explicit UI handling.
-- Model-list status precedes the cloud settings block in the actual HTML so it is next to the request button.
-- Ctrl-wheel mesh hit requirement, normal-wheel exclusion, pixel/line/page delta normalization and malformed delta rejection.
-- Mascot-only zoom IPC, cumulative latest-scale updates, limits, restart settings, unchanged popup bounds and stable center/bottom through repeated zooms.
-- Numeric scale input supports the 0.001 increments used by wheel zoom; direct numeric edits are included in settings saves.
-- External wheel scale updates the numeric field while retaining unsaved persona edits; zoom broadcasts retain hover eligibility for continued wheel use.
-- OpenRouter fixed endpoint and independent key scope, text model discovery, manual model IDs, max_tokens and nested reasoning settings.
-- OpenRouter successful chat/touch requests, relationship context, HTTP 200/402/429/503 error redaction and no automatic retries.
-- OpenRouter settings preset, help visibility, API-key registration/clearing, model save and main-process integration without key leakage.
-- Relationship stages, cooldowns, daily caps, clock rollback, mood expiry, anger penalties and romance opt-out.
-- Application-controlled confession acceptance/rejection, retry cooldown, no automatic romance, quoted-text exclusion and pre-award eligibility.
-- Per-character history/profile persistence, outfit bindings, legacy migration and malformed data bounds.
-- Successful-chat-only affection, cancellation, rejected in-flight profile/VRM changes, control-only relationship IPC and history clearing without relationship loss.
-- Settings controls for relationship summaries, profile creation, romance toggles and explicit confession.
-- Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
-- VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
-- Unrestricted movement beyond all four screen edges; Maximum size is 10.0x. Actual Three.js camera projection of bounding box corners at scale 0.5–10.0 on multiple screen sizes.
-- Startup keeps settings, input and balloon hidden and shows only the mascot.
-- Left click greeting and focused input, speech replacement and dismissal.
-- Shared context menu for character right-click and tray left/right clicks.
-- Transparent-area hit testing, explicit click-disable priority and drag movement.
-- Bubble height limits and independent position persistence across speech, mascot movement, save and restart; explicit position reset.
-- Arbitrary bubble font family and size apply from settings.
-- Rotating anatomical region tests separate front chest and rear buttocks, excluding front pelvis and arms.
-- Completed pointer tap/stroke, cancellation and Shift-drag through actual VRM mesh picking.
-- Sensitive-action counts, timeout/reset, restricted touch IPC and disabling reactions.
-- Reaction motions restore the pose and tolerate missing expression presets in VRM 0.x/1.0.
-- Text lip motion is bounded, closes when finished/disabled and tolerates missing or partial vowel expressions.
-- Soft idle works with VRM 0.x/1.0, stays within small bone rotation limits and restores the original pose when disabled.
-- Motion controls retain their settings; preview action works without an LLM.
-- Input position persists independently through reopening, mascot movement, settings save and restart.
-- Renderer tests for input failure/retry, IME handling, Escape, safe plain-text speech and actual mesh picking.
+## 自動テストで確認した内容
 
-Additional touch LLM coverage:
-- Ollama and LM Studio request bodies include persona, recent history, region/gesture/emotion/count, and a 128-token budget without mutating history.
-- Debouncing, aborting superseded requests, stale response suppression and failure/unconfigured-model fallback.
-- Immediate motion with deferred generated text, no touch history insertion, and normal conversation priority/cancellation.
+- 入力ウィンドウの会話ログをプレーンテキストで表示。保存済み・送信中の文章の表示、返答の重複防止、失敗時の入力保持、キャラクター・履歴変更の反映。
+- 旧版で入力ウィンドウを画面下側に置いていた場合も、拡大後の入力欄を画面内へ復元。
+- 過去ログを読む際や無関係な更新通知を受けた際のスクロール位置保持。末尾付近では新しい返答に追従。Windowsデスクトップ上の外観は別途目視確認が必要。
+- VRMごとの声の関連付けについて、旧設定の移行、保存・再起動後の復元、Windowsパスの正規化、不正な登録値の除外、デモと実モデルの分離。
+- VRM切り替え時のEmbedding復元、未登録の声の案内、前のキャラクターの音声が遅れて届いた場合の破棄。
+- VRM変更時に声のパス表示を更新し、未保存の性格設定を保持。
+- 会話成功後も入力ウィンドウを開いたままにし、送信文の消去、入力欄へのフォーカス復帰、次の会話の送信。失敗時は文章を保持し、Escapeで閉じる操作も維持。
+- 配布ZIPの基本動作確認：Windows版・更新版・ソース版の実行位置にTTS用batとUTF-8 BOM付きPowerShell補助スクリプトが存在すること、batのCRLF改行、導入済みTTS環境・ログを含めないこと。
+- Windows PowerShell補助スクリプト：空白・日本語を含むパスの引用、クローンとCUDA／Python環境構築の引数、専用環境・モデル、再導入時の設定保持、無関係なリポジトリの拒否、ループバックでの起動、ローカルチェックポイント指定の上書き、使用中ポートと依存関係導入失敗の処理。
+- 4つのウィンドウの位置が設定保存・再起動後も保持され、起動直後はキャラクターのみを表示。
+- 移動後の保存タイマーを待たず、終了時に最新位置を同期的に記録。最大化中の設定画面は通常状態の位置を使用。
+- モニター構成の保存、旧設定の初期値補完、不正な座標・サイズの除外、取り外したモニター上のウィンドウの復旧、同じ構成で意図的に画面外へ置いたキャラクターの位置保持。
+- OpenAI／OpenRouterのモデル一覧ボタン：即時の進捗表示、無関係な更新中も取得中の無効状態を保持、重複要求の防止、選択可能な結果表示。
+- 選択したモデルIDの保存。キー未登録、空の返答、接続方式変更後に遅れて届いた結果の画面処理。
+- 実際のHTMLで一覧取得の状態表示をクラウド設定より前に置き、取得ボタンの近くへ表示。
+- Ctrl＋ホイール：メッシュ上のみ有効、通常ホイールの除外、ピクセル・行・ページ単位の差分正規化、不正な差分の拒否。
+- キャラクター画面だけが倍率変更IPCを使用できること、最新倍率からの累積更新、上下限、再起動後の設定、入力・吹き出し位置の維持、連続拡大縮小時の横中心・下端の安定。
+- 倍率の数値入力はホイールと同じ0.001刻みに対応し、直接入力値を設定保存へ反映。
+- ホイールで変更した倍率を数値欄へ反映し、未保存の性格設定を保持。倍率の更新通知後も続けてホイール操作ができるよう、マウスがキャラクター上にある状態を保持。
+- OpenRouterの固定URL、独立したAPIキー管理、会話用モデル一覧、モデルIDの直接入力、`max_tokens`と階層化した推論設定。
+- OpenRouterの会話・タッチ要求、関係情報の送信、HTTP 200／402／429／503エラーの機密情報伏字化、自動再試行を行わないこと。
+- OpenRouterの設定初期値、説明の表示、APIキーの登録・消去、モデル保存、メインプロセス連携でキーを画面へ漏らさないこと。
+- 関係の段階、操作間隔、1日ごとの上限、時計の巻き戻り、機嫌の有効期間、怒りによる減点、恋愛要素の無効化。
+- アプリが告白の受諾・拒否を判定すること、再判定の待ち時間、自動では恋人にならないこと、引用文の除外、同じ会話の加点前に条件を判定すること。
+- キャラクターごとの履歴・プロフィール保存、別衣装の関連付け、旧設定の移行、不正データの範囲制限。
+- 成功した会話だけへの好感度加点、生成停止、生成中のプロフィール・VRM変更の拒否、設定画面だけが関係操作IPCを使用できること、履歴消去後も関係を保持すること。
+- 設定画面の関係表示、プロフィール作成、恋愛要素の切り替え、明示的な告白操作。
+- Ollama／LM Studioへのローカル要求・応答、接続先制限、停止、失敗、履歴保存。
+- VRM 0.x／1.0のテスト用モデルの読み込み、姿勢・表情更新、リソース解放。
+- 画面の四辺を越えた自由な移動と最大10倍の表示。複数の画面サイズ・倍率0.5〜10倍で、実際のThree.jsカメラによるモデル外接領域の角の投影を確認。
+- 起動直後は設定・入力・吹き出しを非表示にし、キャラクターのみを表示。
+- 左クリック時の挨拶と入力へのフォーカス、吹き出しの置き換え・終了。
+- キャラクターの右クリックとトレイの左右クリックで共通のメニューを使用。
+- 透明部分の当たり判定、クリック無効設定の優先、ドラッグによる移動。
+- 吹き出しの高さ制限、発言・キャラクター移動・保存・再起動をまたいだ独立位置の保持、明示的な位置リセット。
+- 任意の吹き出しフォント名・文字サイズを設定から反映。
+- 回転したモデルでも前面の胸部と背面の臀部を区別し、前面の骨盤と腕を対象から除外。
+- 実際のVRMメッシュ判定を使ったタップ・撫でる操作の完了、キャンセル、Shift＋ドラッグ。
+- 対象部位への連続操作回数、時間切れ・リセット、タッチIPCの制限、反応の無効化。
+- 反応モーション後の姿勢復元。VRM 0.x／1.0で必要な表情がなくても処理できること。
+- 文字に合わせた口パクの範囲制限、終了・無効化時に口を閉じること、母音表情の一部または全部がない場合の処理。
+- VRM 0.x／1.0の柔らかい待機動作、ボーン回転を小さな範囲に収めること、無効化後の元の姿勢への復元。
+- モーション設定の保持とLLMなしでの動作確認。
+- 入力ウィンドウの再表示・キャラクター移動・設定保存・再起動をまたいだ独立位置の保持。
+- 描画側の入力失敗・再送、日本語変換中のキー操作、Escape、安全なプレーンテキスト表示、実際のメッシュ判定。
 
-Cloth drag coverage:
-- 8/12 Japanese/English skirt chains with varied lengths, scales and rotations.
-- Hem picking requires cloth skin influence; background and torso do not select a chain.
-- Bounded drag angles and reach, smooth release, restoration before spring updates and cancellation.
-- Renderer gesture arbitration, upward motion, pointer cancellation and Shift-drag; cloth toggle and LLM reaction routing.
-- Regression test reproduces the former frozen-cloth failure with actual VRMSpringBoneJoint/Manager and SkinnedMesh: skin vertices and GPU bone matrices must change after dragging and restore after release, while matrixAutoUpdate remains false.
-- Read-only inspection of two supplied VRMs confirmed 8 four-node and 12 five-node chains, a selectable weighted hem vertex, bounded movement and reset using reconstructed scene transforms. Additional 0.1.9 verification loaded both supplied models with GLTFLoader/VRMLoaderPlugin, keeping geometry, skins and spring definitions while omitting textures for headless execution. Under the same gesture, a selected hem vertex moved about 0.0502 and 0.0222 model units with the fix (previous code showed only about 0.0017 and 0.0022 units of incidental spring movement). These measurements verify skinning rather than quaternion changes alone. Textured GPU rendering and native desktop gestures on these models were not verified. The supplied models are not included in the repository or release.
+## LLMによるタッチ反応
 
-0.1.10 coverage:
-- Cached picking matches the original Three.js raycast with relative/absolute morph targets, active negative weights, and changing bone poses/expressions. Each skinned vertex is evaluated once per query; original mesh methods are restored even when raycasting throws.
-- Seven coat chains are detected; missing garment chains safely ignore repeated drag attempts.
-- The third supplied VRM was loaded headlessly with its actual geometry, skins, humanoid and spring definitions, omitting textures. With the fix, a selected coat hem vertex moved about 0.0183 model units and returned to its original position after release.
-- Headless profiling of that model measured original repeated raycasts around 78–120ms and optimized warmed queries around 36–40ms. These timings are environment-specific, not native desktop freeze reproduction. Exact native freezing remains unconfirmed.
+- Ollama／LM Studioの要求に、性格、直近の履歴、部位・操作・感情・回数、128トークンの上限を含め、元の履歴を変更しないこと。
+- 連続入力をまとめる処理、古い要求の中止、遅れて届いた返答の破棄、失敗時・モデル未設定時の固定セリフへの切り替え。
+- しぐさを即時に実行して生成後に文章を表示すること、タッチ返答を会話履歴に追加しないこと、通常会話の優先と生成停止。
 
-0.1.11 coverage:
-- Larger defaults move the test hem farther than the former 6%/0.5rad limits; configurable 2–50% reach and 10–120deg bend remain bounded under extreme input.
-- Settings default migration, clamping, and percentage/degree UI save behavior.
-- Existing real spring/SkinnedMesh restoration regression runs with the enlarged defaults.
-- Headless checks of all three supplied models confirmed selected hem vertices move roughly 2.3–2.5x farther under a large identical gesture than with the previous defaults, then return after release (with incidental spring motion on two models). Textured desktop appearance remains unverified.
+## 衣服ドラッグ
 
-0.1.12 coverage:
-- Both hands and VRM 0.x/1.0 track reachable IK targets and restore after release. Unreachable and shoulder-origin targets remain finite and preserve upper/forearm lengths.
-- Skin-influence/distance selection, missing arm fallback, cancellation, renderer gesture ownership/Shift movement, and restricted hand LLM reactions/toggle.
-- Headless validation of all three supplied models checks both actual raw and normalized hand positions and restoration using their real humanoid/spring runtimes; textures are omitted. Native textured dragging remains unverified.
+- 日本語・英語名の8本／12本のスカート用ボーン列。長さ・倍率・回転の違いを含む。
+- 裾の選択には衣服のスキンウェイトが必要で、背景・胴体ではボーン列を選択しないこと。
+- ドラッグの角度・距離制限、滑らかな復帰、揺れもの更新前の姿勢復元、キャンセル。
+- 描画側での操作の振り分け、上向き移動、ポインター操作のキャンセル、Shift＋ドラッグ、衣服操作の切り替えとLLM反応への振り分け。
+- 実際の`VRMSpringBoneJoint`／`Manager`と`SkinnedMesh`を使い、以前の「布が動かない」不具合を再現する回帰テスト。`matrixAutoUpdate`がfalseのままでも、ドラッグ後にスキン頂点とGPU用ボーン行列が変化し、解放後に復元すること。
+- 提供された2つのVRMを読み取り専用で調査し、4節点×8本・5節点×12本のボーン列、選択可能な裾のウェイト付き頂点、再構築したシーン変換による移動制限と復元を確認。
+- 0.1.9では両モデルを`GLTFLoader`／`VRMLoaderPlugin`で読み込み、画面を使わない実行のためテクスチャだけを省略し、形状・スキン・揺れもの定義を保持して追加検証。同じ操作で選択した裾の頂点が修正後は約0.0502／0.0222モデル単位移動。修正前は揺れもの由来の約0.0017／0.0022単位の移動のみ。回転値だけでなくスキニングの反映を確認したものです。テクスチャ付きGPU描画と実デスクトップでの操作は未検証。提供モデルはリポジトリ・Releaseに含めていません。
 
-Electron window calls and DOM operations were tested with doubles. No native Windows/GPU window test was performed. Windows mouse-event forwarding, desktop transparency, tray behavior, real Ollama/LM Studio inference and precise appearance on user VRMs remain unverified.
+### 0.1.10での追加確認
 
-The supplied prebuilt renderer's library payload was retained and its application code was regenerated from src/renderer.js. Fresh npm/esbuild build was unavailable locally because the development dependencies are absent. Git clones should run npm ci and npm run build before npm test; delivered ZIPs include dist/renderer.js.
+- キャッシュを使用する当たり判定が、相対・絶対モーフ、有効な負のウェイト、変化する骨の姿勢・表情で元のThree.jsのレイキャストと一致。各スキン頂点は1回の判定中に一度だけ計算し、例外が発生しても元のメッシュ処理を復元。
+- 7本のコート用ボーン列を検出。対象の衣服ボーンがなくても、ドラッグを繰り返した際に安全に無視すること。
+- 3つ目の提供VRMを実際の形状・スキン・人体骨格・揺れもの定義を保持して読み込み、テクスチャなしで検証。修正後は選択したコートの裾の頂点が約0.0183モデル単位移動し、解放後に元へ復帰。
+- 同モデルの画面なしの計測では、元の繰り返しレイキャストが約78〜120ms、最適化後の準備済み判定が約36〜40ms。この環境だけの計測であり、実デスクトップでのフリーズ再現ではありません。実機で固まる正確な条件は未確認です。
 
+### 0.1.11での追加確認
 
-## XYZ orientation coverage
+- 拡大した初期値では、以前の身長比6%・0.5rad制限よりも裾が大きく移動。距離2〜50%・角度10〜120°の設定は極端な入力でも範囲内に制限。
+- 旧設定への初期値補完、上下限への補正、割合・角度の画面入力と保存。
+- 実際の揺れものと`SkinnedMesh`を使う復元の回帰テストを、拡大した初期値でも実行。
+- 3つの提供モデルを画面なしで検証し、同じ大きな操作で選択した裾の頂点が以前の初期値の約2.3〜2.5倍移動し、解放後に復元することを確認。2モデルでは揺れもの由来の移動を伴います。テクスチャ付きのデスクトップ上の外観は未検証。
 
-- Fixed hips pivot under repeated X/Y/Z and combined rotations; geometric-center fallback.
-- Camera projection keeps the pivot centered and every rotated reference-bound corner visible.
-- Actual mesh picking routes Ctrl-drag to XY and Ctrl+Shift-drag to Z, without touch/chat/window movement; cancellation does not persist.
-- Axis settings save, legacy Y migration, persistence/reload, sender and finite-range validation, pass-through priority, and independent window positions.
-- External orientation updates preserve unsaved persona text in the settings form.
+## 手の操作（0.1.12）
 
-Native Windows visual interaction has not been verified in this environment.
+- 左右の手とVRM 0.x／1.0で、到達可能なIK目標への追従と解放後の復元。届かない目標や肩の原点を指定した場合も計算値が有限で、上腕・前腕の長さを保持。
+- スキンウェイト・距離による選択、腕がない場合の通常操作への切り替え、キャンセル、描画側の操作の振り分けとShift移動、手のLLM反応と有効・無効設定の制限。
+- 3つの提供モデルを実際の人体骨格・揺れもの処理で動かし、元の骨格と正規化後の骨格の両方について手の位置と復元を確認。テクスチャは省略し、実デスクトップでのテクスチャ付きドラッグは未検証。
 
-## VRMA coverage
+## XYZ回転
 
-- Synthetic GLB animation applied through the actual VRM animation loader, clip conversion and mixer to both VRM 0.x and 1.0 fixtures; bone movement, vertical hips translation, all-joint restoration and cleanup.
-- Startup/click greeting priority, seven-item shuffled selection, completion-relative intervals, interaction/visibility/conversation suspension, no accumulated playback bursts, and periodic disable without disabling greetings.
-- Renderer integration loads actual synthetic VRMA bytes and animates a fixture on startup and greeting updates; hiding stops playback and restores the pose.
-- Folder selection, registered-file reads, sender checks, external-resource and malformed GLB rejection, interval bounds and persisted settings.
-- Separately loaded all seven user-supplied VRMA files and sampled each at 100 time points on both VRM format fixtures. Every bone transform remained finite (14 clip/model combinations). The supplied files are not committed or redistributed.
-- Native Windows visual appearance and manual gesture interaction remain unverified in this environment.
+- X・Y・Z軸単独と組み合わせの繰り返し回転で腰の回転中心を固定。腰がない場合は形状の中心を使用。
+- カメラ投影で回転中心を中央に保ち、回転した基準外接領域の全ての角が見えること。
+- 実際のメッシュ判定でCtrl＋ドラッグをXY回転、Ctrl＋Shift＋ドラッグをZ回転へ振り分け、タッチ・会話・ウィンドウ移動を起こさないこと。キャンセル時は保存しないこと。
+- 各軸の設定保存、旧Y軸設定の移行、保存・再読み込み、要求元と有限値・範囲の検証、クリック透過設定の優先、ウィンドウ位置の独立性。
+- 外部操作による角度変更時も、設定画面の未保存の性格入力を保持。
+- この環境では、Windows実機上の見た目や操作感は未検証。
 
-- Suspended VRMA playback preserves pose changes from the existing idle animation.
+## VRMAモーション
 
-## Selected idle animation / pose coverage
+- テスト用GLBアニメーションを実際のVRMアニメーションローダー、クリップ変換、ミキサーを通してVRM 0.x／1.0へ適用。ボーン移動、腰の上下移動、全関節の復元、リソース解放。
+- 起動・クリック時の挨拶の優先、7項目のランダムな一巡、再生完了から数える間隔、操作・非表示・会話中の休止、休止中の動作をまとめて再生しないこと、挨拶を維持したまま定期再生だけを無効化。
+- 描画側で実際のテスト用VRMAバイト列を読み込み、起動・挨拶通知でモデルを動かすこと。非表示時は再生を停止して姿勢を復元。
+- フォルダー選択、登録済みファイルの読み取り、要求元の確認、外部リソース・不正なGLBの拒否、再生間隔の上下限、設定保存。
+- 提供された7個のVRMAを別途読み込み、両形式のテスト用VRMで各100時点を取得。14通りのクリップ・モデル組み合わせで、全ボーンの変換値が有限であることを確認。提供ファイルはコミット・再配布していません。
+- VRMA休止中も既存の待機動作による姿勢変化を保持。
+- この環境では、Windows実機上の外観と手動操作は未検証。
 
-- Loop playback across several durations at configured speed; frozen pose remains stable over 100 frames, including exact 0%/100% endpoints.
-- Real mixer blends one-shot greetings/random motions back to selected idle; idle and greeting can use the same source clip independently.
-- Conversation continues idle, manipulation suspends it, release/show resumes it, missing idle file falls back, disposal releases actions.
-- Renderer integration covers static idle after greeting, during conversation, after another greeting, and hide/show. Form selection, draft preservation, settings validation, migration, persistence.
-- Static/constant tracks are re-applied after procedural idle and IK preparation so unchanged mixer tracks cannot revert to the neutral pose.
-- Separately sampled all seven supplied VRM animations in both loop and frozen-pose modes on VRM 0.x and 1.0 fixtures (28 combinations), checking finite transforms and static pose stability. Motion files are not included in the repository or release.
-- Native Windows visual checks remain unperformed in this environment.
+## 選択した待機モーション・静止ポーズ
 
-## Irodori TTS and audio-driven mouth coverage
+- 設定した速度で複数周期のループ再生。0%・100%の端点を含め、静止ポーズが100フレーム安定していること。
+- 実際のミキサーで単発の挨拶・ランダム動作から選択した待機へブレンド。同じ元クリップを待機と挨拶で独立して使用。
+- 会話中の待機継続、操作中の休止、解放・再表示後の再開、ファイルがない場合の標準待機への切り替え、終了時のアクション解放。
+- 描画側で挨拶後・会話中・再挨拶後・非表示と再表示後の静止待機を確認。設定欄の選択、未保存入力の保持、設定検証・移行・保存。
+- 手続き的な待機動作とIK準備の後に静止・一定値のトラックを再適用し、ミキサーで変化のないトラックが標準姿勢に戻らないこと。
+- 提供された7個のVRMAを、VRM 0.x／1.0のループ・静止ポーズで別途検証。28通りの組み合わせで変換値が有限であることと静止姿勢の安定を確認。モーションファイルはリポジトリ・Releaseに含めていません。
+- この環境ではWindows実機での目視確認は未実施。
 
-- Real local HTTP request/response test checks WAV bytes, selected embedding path, caption, speed, response format and model alias; malformed audio, invalid speaker path, nonlocal endpoint, server errors and cancellation.
-- Latest-utterance voice lane discards late completion/failure and aborts superseded work.
-- Web Audio adapter tested with a deterministic audio context: output playback clock, RMS waveform/silence, volume, ending, decode failure and cancellation before playback. This is not an audio device test.
-- Lip motion follows sound amplitude/progress even after pseudo-text timing would have expired, closes during silence and respects disabled/missing vowel expressions.
-- Main-process integration checks embedding choice, mascot-only audio/ack IPC, balloon retention until audio ends, cancellation on hide/new speech and text retention on synthesis failure.
-- Renderer integration covers current/stale audio IDs, waiting before playback, explicit stop, voice settings and saved-settings requirement for testing the voice.
-- Existing model, interaction, orientation, VRMA loop/static pose and UI tests remain passing.
-- Actual Irodori GPU inference with the user's trained embedding, native Windows audio-device output and perceived viseme accuracy remain unverified. No model or embedding is bundled.
+## Irodori-TTSと音声に合わせた口パク
 
-## Cloud LLM coverage
+- 実際のローカルHTTP通信を使うテストで、WAVデータ、選択したEmbeddingのパス、話し方、速度、応答形式、モデル名を確認。不正な音声・話者パス、ローカル以外の接続先、サーバーエラー、生成停止も確認。
+- 最新発言を優先する音声処理が、古い生成の遅い完了・失敗を破棄し、置き換えられた生成を中止すること。
+- 再現可能なテスト用音声コンテキストでWeb Audio処理を確認。再生時計、RMSによる音量・無音判定、音量設定、終了、デコード失敗、再生前の中止。実際の音声デバイスのテストではありません。
+- 文字から見積もった発言時間が過ぎても、実音声の振幅・再生進行に従って口を動かすこと。無音時は閉じ、無効設定や母音表情の欠落を考慮。
+- メインプロセス連携でEmbedding選択、キャラクター画面だけが音声・応答確認IPCを使えること、音声終了までの吹き出し保持、非表示・新発言時の中止、生成失敗時の文章保持。
+- 描画側で現在・過去の音声ID、再生前の待機、明示的な停止、音声設定、声を試す前に設定保存が必要なことを確認。
+- 既存のモデル・操作・回転・VRMAループと静止ポーズ・画面のテストも合格。
+- この環境では、利用者の学習済みEmbeddingによる実際のIrodori GPU推論、Windows音声デバイスの出力、見た目の口形の精度は未検証。モデル・Embeddingは同梱していません。
 
-- OpenAI and compatible HTTPS endpoint normalization, official-host enforcement, endpoint-scoped key identifiers, loopback-only TTS/local-provider rules.
-- Mocked network verifies bearer auth, model discovery, chat history bounds, completion-token budgets, opt-in reasoning/temperature, compatible API root and token parameter, and OpenAI store:false.
-- Same cloud credential routing for touch reactions; no model, audio or embedding files sent to LLM.
-- Key vault delegates encryption/decryption to safeStorage (tested with deterministic-interface cryptographic test doubles), persists ciphertext separately, reloads, deletes, rejects insecure fallback and malformed keys, and reports unreadable keys generically.
-- IPC tests cover control-only key operations, main-process credential injection, model/chat/touch lanes and absence of secret values in renderer state/events. Renderer tests cover manual model IDs, clearing password fields, editable compatible URLs and switching back to local.
-- API error redaction, no automatic paid-request retry and cancellation.
-- Live cloud requests/billing, real account/model availability and native Windows DPAPI integration were not tested in this environment.
+## クラウドLLM
 
-Relationship language and TTS expressiveness are covered through request/state tests; live conversation quality, actual Irodori audio, and user VRM expressions still require testing on the target Windows PC.
+- OpenAIと互換APIのHTTPS接続先の正規化、OpenAI公式ホストの制限、接続先ごとのAPIキー識別、TTS・ローカルLLMのループバック制限。
+- 模擬ネットワークでBearer認証、モデル一覧、会話履歴の範囲、出力トークン上限、任意指定の推論量・Temperature、互換APIのベースURLとトークン引数、OpenAIの`store:false`を確認。
+- タッチ反応でも同じクラウド認証情報を使用。モデル・音声・EmbeddingのファイルをLLMへ送信しないこと。
+- APIキー保管処理が`safeStorage`へ暗号化・復号を委譲することを、再現可能なインターフェースの暗号処理の代替実装で確認。暗号文の別保存、再読み込み、削除、安全でない保存方式への切り替えと不正なキーの拒否、読み取れないキーを機密情報なしで通知すること。
+- IPCテストで設定画面だけのキー操作、メインプロセスでの認証情報の付加、モデル一覧・会話・タッチ処理、画面の状態・通知に秘密値がないことを確認。描画側ではモデルIDの直接入力、パスワード欄の消去、互換URLの編集、ローカル接続への切り替えを確認。
+- APIエラー内の機密情報の伏字化、有料要求の自動再試行を行わないこと、生成停止。
+- この環境では実際のクラウド要求・課金、アカウントごとのモデル提供状況、Windowsの実際のDPAPI連携は未検証。
+- OpenRouterは模擬API応答で検証。利用者のAPIキーを使う有料要求は実行していません。モデルの利用可否・出力品質は使用するOpenRouterアカウントで確認が必要。
 
-OpenRouter requests are verified with mocked API responses. No user API key was available for a paid live request; model availability and actual output quality must be checked with the selected OpenRouter account.
+## 検証方法と実機確認の範囲
 
-Ctrl-wheel is covered with renderer/IPC tests; physical mouse and touchpad behavior requires confirmation on the target Windows PC.
+Electronのウィンドウ呼び出しとDOM操作は代替実装を使ってテストしています。この環境では、Windowsの実際のウィンドウ・GPUを使ったテストは行っていません。マウスイベント転送、透過表示、トレイ動作、実際のOllama／LM Studio推論、利用者のVRMの正確な見た目は別途実機確認が必要です。
 
-Native Windows window placement and monitor reconnection still require verification on the target PC; automated coverage uses Electron window mocks and actual persisted Store data.
+初期の検証時には開発用依存関係がなく、提供済み描画コードのライブラリ部分を維持し、`src/renderer.js`からアプリ部分を再生成していました。これは当時の制約であり、0.1.28では冒頭のとおり依存関係を使用した再ビルドと140件のテストを実施しています。Gitから取得した場合は、`npm ci`と`npm run build`を実行してから`npm test`を実行してください。配布ZIPには`dist/renderer.js`を含みます。
 
-The TTS helper Windows smoke tests replace Git/uv/GPU/network operations with fixtures. Actual WinGet installation, dependency downloads, GPU inference and the user Speaker Embedding still require validation on the target Windows PC.
+関係に応じた言葉遣いとTTSの表現は、要求内容・状態のテストで確認しています。実際の会話品質、音声、VRMの表情の見え方は対象のWindows PCで確認が必要です。
 
-User reports confirm real OpenAI conversation and Irodori-TTS audio generation on their PC before this change. Automatic per-VRM switching is covered by fixtures; target-PC playback switching still needs confirmation.
+Ctrl＋ホイールは描画側・IPCのテストで確認済みです。物理マウス・タッチパッドの操作感は実機確認が必要です。ウィンドウ配置とモニター再接続も、Electronのウィンドウ代替実装と実際のStore保存データでの確認であり、実機での確認は別途必要です。
+
+TTS用Windows補助スクリプトの基本動作テストでは、Git・uv・GPU・ネットワーク処理をテスト用の代替処理に置き換えています。実際のWinGet導入、依存関係のダウンロード、GPU推論、利用者のSpeaker Embeddingによる動作をこのテストで確認したわけではありません。
+
+利用者からは、声の自動切り替えを追加する前の版で、実PC上のOpenAI会話とIrodori-TTS音声生成の成功報告を受けています。また、マウスによる回転とVRMAモーションの動作確認報告も受けています。VRMごとの声の自動切り替えはテスト用データで確認済みですが、実PCで再生する声が切り替わることは引き続き確認が必要です。
