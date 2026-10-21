@@ -264,6 +264,16 @@ function initCharacterMouse(){
   }
   return window.companionInteraction.classifyPoint(hit.point,joints,state.settings.touchZoneScale);
  }
+ el.addEventListener('wheel',e=>{
+  if(!e.ctrlKey||state.pass)return;
+  e.preventDefault();
+  if(down)return;
+  const target=hit(e);if(!target){over=false;api.hit(false);return;}
+  if(!Number.isFinite(e.deltaY)||e.deltaY===0)return;
+  const pixels=e.deltaY*(e.deltaMode===1?32:e.deltaMode===2?el.getBoundingClientRect().height:1);
+  const delta=Math.max(-300,Math.min(300,pixels));
+  call(api.zoom(delta)).catch(error=>api.modelStatus('大きさを保存できません：'+error.message));
+ },{passive:false});
  el.onpointerdown=e=>{
   if(down||e.button!==0||e.isPrimary===false||state.pass)return;const target=hit(e);if(!target)return;
   interacting=true;motionPlayer.interrupt(elapsed);
@@ -335,7 +345,7 @@ api.onUpdate(data=>{
   if(data.settings&&!state.settings.ttsEnabled&&before.ttsEnabled)stopVoiceLocal();
   if(data.reloadVRM)loadVRM(true);
   if(data.settings)cloth?.configure?.(state.settings);
-  if(data.pass||data.settings&&(before.handDrag!==state.settings.handDrag||before.clothDrag!==state.settings.clothDrag||before.clothReach!==state.settings.clothReach||before.clothAngle!==state.settings.clothAngle||rotationChanged||before.scale!==state.settings.scale)){cancelInteraction();cloth?.reset();hands?.reset();}
+  if(data.pass||data.settings&&(before.handDrag!==state.settings.handDrag||before.clothDrag!==state.settings.clothDrag||before.clothReach!==state.settings.clothReach||before.clothAngle!==state.settings.clothAngle||rotationChanged||before.scale!==state.settings.scale)){if(interacting||data.pass||rotationChanged||before.scale===state.settings.scale)cancelInteraction();cloth?.reset();hands?.reset();}
   if(renderer&&(before.scale!==state.settings.scale||rotationChanged))resizeViewport();
  }else if(view==='input'){
   $('inputName').textContent=state.settings.name+'に話しかける';setInputBusy();if(data.focusInput)focusInput();
@@ -345,7 +355,7 @@ api.onUpdate(data=>{
  }else{
   if(data.voiceStatus!==undefined)status('voiceStatus',data.voiceStatus);
   if(data.reloadMotions)refreshMotionOptions();
-  if(!dirty)fillSettings(state.settings);else if(rotationChanged)for(const k of ['angleX','angleY','angleZ'])$(k).value=state.settings[k];$('companionName').textContent=state.settings.name;$('modelBadge').textContent=state.settings.model||'モデル未選択';
+  if(!dirty)fillSettings(state.settings);else{if(rotationChanged)for(const k of ['angleX','angleY','angleZ'])$(k).value=state.settings[k];if(before.scale!==state.settings.scale)$('scale').value=state.settings.scale;}$('companionName').textContent=state.settings.name;$('modelBadge').textContent=state.settings.model||'モデル未選択';
   if(data.reply)pendingText='';renderRelationship();renderHistory();updateBusy(state.busy);if(data.controlTab)selectControlTab(data.controlTab);
  }
 });

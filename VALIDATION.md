@@ -1,7 +1,10 @@
-# Validation — 0.1.20
+# Validation — 0.1.21
 
-122 tests passed after a fresh dependency install and renderer build:
+125 tests passed after a fresh dependency install and renderer build:
 
+- Ctrl-wheel mesh hit requirement, normal-wheel exclusion, pixel/line/page delta normalization and malformed delta rejection.
+- Mascot-only zoom IPC, cumulative latest-scale updates, limits, restart settings, unchanged popup bounds and stable center/bottom through repeated zooms.
+- External wheel scale updates the slider while retaining unsaved persona edits; zoom broadcasts retain hover eligibility for continued wheel use.
 - OpenRouter fixed endpoint and independent key scope, text model discovery, manual model IDs, max_tokens and nested reasoning settings.
 - OpenRouter successful chat/touch requests, relationship context, HTTP 200/402/429/503 error redaction and no automatic retries.
 - OpenRouter settings preset, help visibility, API-key registration/clearing, model save and main-process integration without key leakage.
@@ -119,3 +122,5 @@ Native Windows visual interaction has not been verified in this environment.
 Relationship language and TTS expressiveness are covered through request/state tests; live conversation quality, actual Irodori audio, and user VRM expressions still require testing on the target Windows PC.
 
 OpenRouter requests are verified with mocked API responses. No user API key was available for a paid live request; model availability and actual output quality must be checked with the selected OpenRouter account.
+
+Ctrl-wheel is covered with renderer/IPC tests; physical mouse and touchpad behavior requires confirmation on the target Windows PC.

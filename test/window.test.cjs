@@ -155,3 +155,13 @@ test('OpenRouter keys and provider reach models, normal conversation and touch w
  assert.deepEqual(calls,[['models','openrouter','router-secret'],['chat','openrouter','router-secret'],['touch','openrouter','router-secret']]);for(const w of b.windows)assert.ok(!JSON.stringify(w.events).includes('router-secret'));
  assert.equal((await b.invoke('key-status',{...s,provider:'compatible'})).data.saved,false);await b.invoke('key-delete',s);assert.equal((await b.invoke('key-status',s)).data.saved,false);
 });
+
+test('wheel zoom is mascot-only, bounded, relative to latest scale, persisted and independent of popup positions',async()=>{
+ const {invoke,as,windows}=await boot({scale:1,angleY:25});const original=windows.map(w=>w.getBounds());
+ assert.equal((await invoke('zoom',-100)).ok,false);for(const x of [NaN,Infinity,'100',301])assert.equal((await as(1,'zoom',x)).ok,false);
+ assert.equal((await as(1,'zoom',-100)).data,1.105);assert.equal((await as(1,'zoom',-100)).data,1.221);assert.equal((await invoke('state')).data.settings.angleY,25);
+ for(let i=0;i<20;i++)await as(1,'zoom',-300);assert.equal((await invoke('state')).data.settings.scale,10);
+ for(let i=0;i<20;i++)await as(1,'zoom',300);const saved=(await invoke('state')).data.settings;assert.equal(saved.scale,.5);assert.deepEqual(windows.slice(2).map(w=>w.getBounds()),original.slice(2));
+ const b=windows[1].getBounds();assert.equal(b.x+b.width/2,original[1].x+original[1].width/2);assert.equal(b.y+b.height,original[1].y+original[1].height);
+ const restart=await boot(saved);assert.equal((await restart.invoke('state')).data.settings.scale,.5);await invoke('action','pass');await as(1,'zoom',-300);assert.equal((await invoke('state')).data.settings.scale,.5);
+});

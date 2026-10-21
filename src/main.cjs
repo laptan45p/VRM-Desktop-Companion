@@ -10,7 +10,7 @@ const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,scr
 const fs=require('node:fs/promises'),path=require('node:path');
 const {mascotBounds,popupBounds,restoreInputBounds}=require('./layout.cjs');
 const {Store,cleanSettings,listModels,chat,touchReply,isCloud,llmBase}=require('./backend.cjs');
-let store,keys,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null,voiceId=0,voiceAwaiting=null,voiceStatus='';
+let store,keys,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null,voiceId=0,voiceAwaiting=null,voiceStatus='',wheelAnchor=null;
 const touchResponses=new TouchResponder({generate:(s,h,r,signal)=>touchReply(s,h,r,signal,{apiKey:credentials(s),relationshipContext:relationship.context(relationship.current(store.data.relationships))}),publish:(text,reaction)=>{speak(text,{touch:true});broadcast({reaction});}});
 const voiceLane=new VoiceLane({publish:audio=>{
  if(audio.id!==voiceId)return;voiceAwaiting=audio.id;clearTimeout(speechTimer);voiceStatus='音声の再生準備中…';broadcast({voiceStatus});
@@ -46,10 +46,12 @@ function rememberPosition(window,prefix){
 function recoverInput(){
  for(const w of [input,bubble]){const b=w.getBounds(),next=restoreInputBounds({x:b.x,y:b.y},b,inputAreas());if(next.x!==b.x||next.y!==b.y)w.setBounds(next,false);}
 }
-function resizeMascot(reset=false){
+function resizeMascot(reset=false,anchor=null){
  if(!mascot||mascot.isDestroyed())return;
  const previous=reset?null:mascot.getBounds(),r=reset?screen.getPrimaryDisplay().workArea:area();
- mascot.setBounds(mascotBounds(store.data.settings.scale,r,previous),false);positionPopups();
+ const bounds=mascotBounds(store.data.settings.scale,r,previous);
+ if(anchor){bounds.x=Math.round(anchor.center-bounds.width/2);bounds.y=Math.round(anchor.bottom-bounds.height);}
+ mascot.setBounds(bounds,false);positionPopups();
 }
 function applyHit(){if(mascot&&!mascot.isDestroyed())mascot.setIgnoreMouseEvents(pass||(!hovered&&!drag),{forward:true});}
 function setPass(value){touchResponses.cancel();pass=!!value;drag=null;applyHit();broadcast();}
@@ -174,6 +176,17 @@ handle('drag',(phase,x,y)=>{
  if(phase==='start')drag={x,y,bounds:mascot.getBounds()};
  else if(drag&&phase==='move'){const b={...drag.bounds,x:Math.round(drag.bounds.x+x-drag.x),y:Math.round(drag.bounds.y+y-drag.y)};mascot.setBounds(b,false);}
  else if(phase==='end')drag=null;applyHit();
+},()=>mascot);
+handle('zoom',delta=>{
+ if(typeof delta!=='number'||!Number.isFinite(delta)||Math.abs(delta)>300)throw new Error('拡大縮小の値が不正です。');
+ if(pass||delta===0)return store.data.settings.scale;
+ const previous=store.data.settings,next=Math.max(.5,Math.min(10,Math.round(previous.scale*Math.exp(-delta*.001)*1000)/1000));
+ if(next===previous.scale)return next;
+ store.data.settings={...previous,scale:next};
+ try{store.save();}catch(e){store.data.settings=previous;throw e;}
+ const bounds=mascot.getBounds();
+ if(!wheelAnchor||['x','y','width','height'].some(k=>wheelAnchor.bounds[k]!==bounds[k]))wheelAnchor={center:bounds.x+bounds.width/2,bottom:bounds.y+bounds.height,bounds};
+ resizeMascot(false,wheelAnchor);wheelAnchor.bounds=mascot.getBounds();broadcast();return next;
 },()=>mascot);
 handle('orientation',angles=>{
  if(pass)return store.data.settings;
