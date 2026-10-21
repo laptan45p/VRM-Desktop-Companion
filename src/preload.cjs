@@ -1,5 +1,7 @@
 const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('companion', {
+  relationship:(operation,value)=>ipcRenderer.invoke('relationship',operation,value),
+  confess:()=>ipcRenderer.invoke('confess'),
   state:()=>ipcRenderer.invoke('state'),
   save:s=>ipcRenderer.invoke('save',s),
   chooseSpeaker:()=>ipcRenderer.invoke('choose-speaker'),

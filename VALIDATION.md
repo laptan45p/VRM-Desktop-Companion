@@ -1,7 +1,12 @@
-# Validation — 0.1.18
+# Validation — 0.1.19
 
-105 tests passed after a fresh dependency install and renderer build:
+117 tests passed after a fresh dependency install and renderer build:
 
+- Relationship stages, cooldowns, daily caps, clock rollback, mood expiry, anger penalties and romance opt-out.
+- Application-controlled confession acceptance/rejection, retry cooldown, no automatic romance, quoted-text exclusion and pre-award eligibility.
+- Per-character history/profile persistence, outfit bindings, legacy migration and malformed data bounds.
+- Successful-chat-only affection, cancellation, rejected in-flight profile/VRM changes, control-only relationship IPC and history clearing without relationship loss.
+- Settings controls for relationship summaries, profile creation, romance toggles and explicit confession.
 - Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
 - VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
 - Unrestricted movement beyond all four screen edges; Maximum size is 10.0x. Actual Three.js camera projection of bounding box corners at scale 0.5–10.0 on multiple screen sizes.
@@ -107,3 +112,5 @@ Native Windows visual interaction has not been verified in this environment.
 - IPC tests cover control-only key operations, main-process credential injection, model/chat/touch lanes and absence of secret values in renderer state/events. Renderer tests cover manual model IDs, clearing password fields, editable compatible URLs and switching back to local.
 - API error redaction, no automatic paid-request retry and cancellation.
 - Live cloud requests/billing, real account/model availability and native Windows DPAPI integration were not tested in this environment.
+
+Relationship language and TTS expressiveness are covered through request/state tests; live conversation quality, actual Irodori audio, and user VRM expressions still require testing on the target Windows PC.

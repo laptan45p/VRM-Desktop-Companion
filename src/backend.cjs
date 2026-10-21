@@ -89,16 +89,16 @@ async function chat(settings, history, userText, signal, {maxTokens,timeoutMs=18
   if (typeof answer !== 'string' || !answer.trim()) throw new Error(cloud?'返答が空でした。対応する会話モデルを選び、出力トークン上限や推論量の設定を確認してください。':'返答が空でした。モデル設定やサーバーログを確認してください。');
   return answer.trim();
 }
-async function touchReply(settings,history,reaction,signal,{apiKey=''}={}){
+async function touchReply(settings,history,reaction,signal,{apiKey='',relationshipContext=''}={}){
  const regions={head:'頭・顔',chest:'胸部',butt:'臀部',cloth:'衣服の裾',hand:'手'},gestures={poke:'軽くつつかれた',stroke:'撫でられた'},emotions={shy:'照れ・恥ずかしさ',surprised:'驚き',angry:'怒り'};
  if(!regions[reaction.region]||!gestures[reaction.gesture]||!emotions[reaction.emotion])throw new Error('反応の指定が不正です。');
  const systemExtra='デスクトップ上の触れ合いへの短い反応を演じてください。設定された性格・口調と直前の会話を踏まえ、指定の感情を声色が伝わる自然な言葉で表現してください。反応のセリフだけを日本語1〜2文、70文字以内で返してください。解説・ト書き・話者ラベルは不要です。性的な描写はせず、怒りの指定では嫌だという意思を保ち、触るよう誘わないでください。';
  const prompt=`【今起きた操作】${regions[reaction.region]}を${reaction.region==='cloth'?'軽く引っ張られた':reaction.region==='hand'?'つかんで動かされた':gestures[reaction.gesture]}。\n【感情】${emotions[reaction.emotion]}\n【胸部・臀部への連続操作回数】${reaction.count}回\nこの瞬間のあなたの短い反応は？`;
- const answer=await chat({...settings,historyTurns:Math.min(settings.historyTurns,3)},history,prompt,signal,{maxTokens:isCloud(settings.provider)?Math.min(settings.cloudMaxTokens,1024):128,timeoutMs:15000,systemExtra,apiKey});
+ const answer=await chat({...settings,historyTurns:Math.min(settings.historyTurns,3)},history,prompt,signal,{maxTokens:isCloud(settings.provider)?Math.min(settings.cloudMaxTokens,1024):128,timeoutMs:15000,systemExtra:systemExtra+"\n"+relationshipContext,apiKey});
  return answer.slice(0,160);
 }
 class Store {
-  constructor(dir) { this.file = path.join(dir, 'companion.json'); this.data = {settings:{...DEFAULTS},history:[]}; }
+  constructor(dir) { this.file = path.join(dir, 'companion.json'); this.data = {settings:{...DEFAULTS},history:[],relationships:require('./relationship.cjs').clean(null,DEFAULTS.name)}; }
   load() {
     if (!fs.existsSync(this.file)) return;
     const raw = JSON.parse(fs.readFileSync(this.file, 'utf8'));
@@ -108,6 +108,7 @@ class Store {
     const history=[];
     for(let i=0;i+1<items.length;i+=2) if(items[i]?.role==='user' && items[i+1]?.role==='assistant' && typeof items[i].content==='string' && typeof items[i+1].content==='string') history.push(items[i],items[i+1]);
     this.data.history=history.slice(-200);
+    this.data.relationships=require('./relationship.cjs').clean(raw.relationships,this.data.settings.name);
   }
   save() {
     fs.mkdirSync(path.dirname(this.file),{recursive:true});

@@ -34,12 +34,26 @@ function renderHistory(){
  for(const m of history){const div=document.createElement('div');div.className='msg '+m.role;const name=document.createElement('span');name.className='speaker';name.textContent=m.role==='user'?'あなた':state.settings.name;div.append(name,document.createTextNode(m.content));area.append(div);}
  area.scrollTop=area.scrollHeight;
 }
-function updateBusy(value){busy=value;$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear','fetchModels'])$(id).disabled=busy;$('saveKey').disabled=busy||!keyAvailable;$('deleteKey').disabled=busy||!keySaved;}
+function renderRelationship(){
+ const r=state.relationship;if(!r)return;
+ const el=$('relationshipProfile');el.replaceChildren();for(const p of r.profiles)el.add(new Option(p.label,p.id));el.value=r.active;
+ $('romanceEnabled').checked=r.romanceEnabled;
+ const moods={calm:'落ち着いている',happy:'嬉しい',shy:'照れている',surprised:'驚いている',angry:'怒っている'};
+ $('relationshipSummary').textContent=`${r.label}：${r.stage}（好感度 ${r.affinity}）・${r.status} ／ 今の気分：${moods[r.mood]||r.mood}`;
+ $('confess').disabled=busy||!r.romanceEnabled;
+}
+function updateBusy(value){busy=value;$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear','fetchModels'])$(id).disabled=busy;$('saveKey').disabled=busy||!keyAvailable;$('deleteKey').disabled=busy||!keySaved;for(const id of ['relationshipProfile','relationshipName','createRelationship','romanceEnabled'])$(id).disabled=busy;$('confess').disabled=busy||!state.relationship?.romanceEnabled;}
 async function initControl(){
+ renderRelationship();
+ const relationAction=async(operation,value)=>{if(dirty)throw new Error('変更した設定を先に保存してください。');state.relationship=await call(api.relationship(operation,value));renderRelationship();status('relationshipStatus','関係の設定を保存しました。');};
+ $('relationshipProfile').onchange=wrap(async()=>{try{await relationAction('select',$('relationshipProfile').value);}finally{renderRelationship();}},'relationshipStatus');
+ $('createRelationship').onclick=wrap(async()=>{await relationAction('create',$('relationshipName').value);$('relationshipName').value='';},'relationshipStatus');
+ $('romanceEnabled').onchange=wrap(async()=>{try{await relationAction('romance',$('romanceEnabled').checked);}finally{renderRelationship();}},'relationshipStatus');
+ $('confess').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');await call(api.confess());status('relationshipStatus','気持ちを伝えました。返事は吹き出しと会話履歴に表示します。');},'relationshipStatus');
  fillSettings(state.settings);status('voiceStatus',state.voiceStatus||'');$('chooseSpeaker').onclick=wrap(async()=>{const path=await call(api.chooseSpeaker());if(path)$('speakerPath').textContent=path;},'voiceStatus');$('testVoice').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');await call(api.action('test-voice'));},'voiceStatus');$('stopVoice').onclick=()=>api.action('stop-voice');refreshMotionOptions();$('chooseMotions').onclick=wrap(async()=>{const names=await call(api.chooseMotions());if(names){await refreshMotionOptions();$('motionPath').textContent=state.settings.motionFolder;status('motionStatus',names.length+'件のモーションを登録しました。');}},'motionStatus');$('dataPath').textContent='設定と履歴：'+state.dataPath;
  const tabs=selectControlTab;
  $('chatTab').onclick=()=>tabs('chat');$('settingsTab').onclick=()=>tabs('settings');
- $('settingsForm').oninput=()=>{dirty=true;};
+ $('settingsForm').oninput=e=>{if(['relationshipProfile','relationshipName','romanceEnabled'].includes(e?.target?.id))return;dirty=true;};
  $('provider').onchange=()=>{$('endpoint').value={ollama:'http://127.0.0.1:11434',lmstudio:'http://127.0.0.1:1234',openai:'https://api.openai.com/v1',compatible:''}[$('provider').value];$('apiKey').value='';setModels([],$('provider').value==='openai'?'gpt-6-luna':'');dirty=true;updateProviderUI();};
  $('endpoint').oninput=()=>{dirty=true;$('apiKey').value='';refreshKeyStatus();};
  $('saveKey').onclick=wrap(async()=>{const key=$('apiKey').value;$('apiKey').value='';await call(api.saveKey(settingsFromForm(),key));await refreshKeyStatus();},'keyStatus');
@@ -308,7 +322,7 @@ api.onUpdate(data=>{
  if(!state)return;const before=state.settings;state={...state,...data};
  const rotationChanged=['angleX','angleY','angleZ'].some(k=>before[k]!==state.settings[k]);
  if(isMascot){
-  if(data.reply||data.greeting)moodUntil=elapsed+4;
+  if(data.reply&&data.mood!=='angry'||data.greeting&&state.relationship?.mood!=='angry')moodUntil=elapsed+4;
   if(data.greeting)motionPlayer.greet();
   if(data.reaction){motionPlayer.interrupt(elapsed);motionHoldUntil=elapsed+3.5;}
   if(data.settings)motionPlayer.configure(state.settings,elapsed);
@@ -332,7 +346,7 @@ api.onUpdate(data=>{
   if(data.voiceStatus!==undefined)status('voiceStatus',data.voiceStatus);
   if(data.reloadMotions)refreshMotionOptions();
   if(!dirty)fillSettings(state.settings);else if(rotationChanged)for(const k of ['angleX','angleY','angleZ'])$(k).value=state.settings[k];$('companionName').textContent=state.settings.name;$('modelBadge').textContent=state.settings.model||'モデル未選択';
-  if(data.reply)pendingText='';renderHistory();updateBusy(state.busy);if(data.controlTab)selectControlTab(data.controlTab);
+  if(data.reply)pendingText='';renderRelationship();renderHistory();updateBusy(state.busy);if(data.controlTab)selectControlTab(data.controlTab);
  }
 });
 (async()=>{try{
