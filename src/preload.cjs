@@ -11,8 +11,10 @@ contextBridge.exposeInMainWorld('companion', {
   hit:v=>ipcRenderer.invoke('hit',v),
   touch:(region,gesture)=>ipcRenderer.invoke('touch',region,gesture),
   drag:(phase,x,y)=>ipcRenderer.invoke('drag',phase,x,y),
+  orientation:angles=>ipcRenderer.invoke('orientation',angles),
   bubbleSize:h=>ipcRenderer.invoke('bubble-size',h),
   modelStatus:text=>ipcRenderer.invoke('model-status',text),
   action:name=>ipcRenderer.invoke('action',name),
   onUpdate:fn=>{const listener=(_e,data)=>fn(data);ipcRenderer.on('update',listener);return()=>ipcRenderer.removeListener('update',listener);},
 });
+

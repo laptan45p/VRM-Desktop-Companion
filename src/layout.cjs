@@ -32,5 +32,11 @@
   const visible=areas.some(r=>b.x+b.width>r.x+40&&b.x<r.x+r.width-40&&b.y+30>r.y&&b.y<r.y+r.height-30);
   return visible?b:clampPosition(b,areas[0]);
  }
- return {TOP,BOTTOM,BASE_WIDTH,BASE_HEIGHT,mascotBounds,fitDistance,popupBounds,clampPosition,restoreInputBounds};
+ function normalizeAngle(value){return Math.round((((value+180)%360+360)%360-180)*10)/10;}
+ function rotationFromDrag(base,dx,dy,roll=false){
+  if(!Number.isFinite(dx)||!Number.isFinite(dy))return null;
+  return {angleX:normalizeAngle(base.angleX+(roll?0:dy*.4)),angleY:normalizeAngle(base.angleY+(roll?0:dx*.4)),angleZ:normalizeAngle(base.angleZ+(roll?dx*.4:0))};
+ }
+ return {rotationFromDrag,TOP,BOTTOM,BASE_WIDTH,BASE_HEIGHT,mascotBounds,fitDistance,popupBounds,clampPosition,restoreInputBounds};
 });
+

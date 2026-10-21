@@ -1,6 +1,6 @@
-# Validation — 0.1.12
+# Validation — 0.1.13
 
-59 tests passed with the supplied runtime:
+67 tests passed after a fresh dependency install and renderer build:
 
 - Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
 - VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
@@ -54,3 +54,14 @@ Cloth drag coverage:
 Electron window calls and DOM operations were tested with doubles. No native Windows/GPU window test was performed. Windows mouse-event forwarding, desktop transparency, tray behavior, real Ollama/LM Studio inference and precise appearance on user VRMs remain unverified.
 
 The supplied prebuilt renderer's library payload was retained and its application code was regenerated from src/renderer.js. Fresh npm/esbuild build was unavailable locally because the development dependencies are absent. Git clones should run npm ci and npm run build before npm test; delivered ZIPs include dist/renderer.js.
+
+
+## XYZ orientation coverage
+
+- Fixed hips pivot under repeated X/Y/Z and combined rotations; geometric-center fallback.
+- Camera projection keeps the pivot centered and every rotated reference-bound corner visible.
+- Actual mesh picking routes Ctrl-drag to XY and Ctrl+Shift-drag to Z, without touch/chat/window movement; cancellation does not persist.
+- Axis settings save, legacy Y migration, persistence/reload, sender and finite-range validation, pass-through priority, and independent window positions.
+- External orientation updates preserve unsaved persona text in the settings form.
+
+Native Windows visual interaction has not been verified in this environment.

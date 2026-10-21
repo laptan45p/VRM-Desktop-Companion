@@ -52,3 +52,9 @@ test('touch replies preserve persona and recent context with bounded output on b
 test('cloth reach and angle preserve new defaults and clamp saved settings',()=>{
  assert.equal(cleanSettings({}).clothReach,.18);assert.equal(cleanSettings({}).clothAngle,80);assert.equal(cleanSettings({clothReach:10,clothAngle:1000}).clothReach,.5);assert.equal(cleanSettings({clothReach:0,clothAngle:0}).clothAngle,10);assert.equal(cleanSettings({clothReach:.4,clothAngle:110}).clothAngle,110);
 });
+
+
+test('legacy Y orientation migrates and XYZ settings persist',()=>{
+ assert.equal(cleanSettings({angle:75}).angleY,75);const s=cleanSettings({angle:-10,angleX:300,angleY:25,angleZ:-300});assert.equal(s.angleX,180);assert.equal(s.angleY,25);assert.equal(s.angleZ,-180);assert.equal(s.angle,25);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'orientation-'));try{const store=new Store(dir);store.data.settings=s;store.save();const next=new Store(dir);next.load();assert.deepEqual(next.data.settings,s);}finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

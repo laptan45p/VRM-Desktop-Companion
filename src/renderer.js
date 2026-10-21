@@ -11,8 +11,8 @@ function status(id,text,error=false){$(id).textContent=text;$(id).classList.togg
 async function call(promise){const r=await promise;if(!r.ok)throw new Error(r.error);return r.data;}
 function wrap(fn,id='chatStatus'){return async(...args)=>{try{await fn(...args);}catch(e){status(id,e.message,true);}};}
 function selectControlTab(which){const chat=which==='chat';$('chatView').hidden=!chat;$('settingsView').hidden=chat;$('chatTab').classList.toggle('selected',chat);$('settingsTab').classList.toggle('selected',!chat);}
-function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona','bubbleFont'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angle','motionStrength','touchZoneScale','bubbleFontSize','clothAngle'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag'])s[k]=$(k).checked;s.clothReach=Number($('clothReach').value)/100;return s;}
-function fillSettings(s){for(const id of ['provider','endpoint','name','persona','bubbleFont','temperature','historyTurns','scale','angle','motionStrength','touchZoneScale','bubbleFontSize','clothAngle'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag'])$(k).checked=s[k];$('clothReach').value=Math.round(s.clothReach*100);setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';}
+function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona','bubbleFont'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag'])s[k]=$(k).checked;s.clothReach=Number($('clothReach').value)/100;return s;}
+function fillSettings(s){for(const id of ['provider','endpoint','name','persona','bubbleFont','temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag'])$(k).checked=s[k];$('clothReach').value=Math.round(s.clothReach*100);setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';}
 function setModels(models,selected){$('model').replaceChildren();if(!models.length){const o=new Option('モデルがありません','');$('model').add(o);}for(const m of models)$('model').add(new Option(m,m));if(models.includes(selected))$('model').value=selected;}
 function renderHistory(){
  const area=$('history');area.replaceChildren();
@@ -48,7 +48,8 @@ async function initControl(){
  renderHistory();updateBusy(state.busy);selectControlTab('settings');
 }
 let scene,camera,renderer,vrm,demoRoot,modelRoot,clock,elapsed=0,loadId=0,moodUntil=0,blinkAt=2,blinkStart=-10;
-let rest=new Map(),cloth=null,hands=null,cancelInteraction=()=>{};
+let rest=new Map(),cloth=null,hands=null,orientationPreview=null,cancelInteraction=()=>{};
+const modelOrientation=new window.companionOrientation.ModelOrientation(THREE.Vector3,THREE.Box3);
 const picking=new window.companionPicking.MeshPicking(THREE.Vector3);
 const lips=new window.companionMotion.LipMotion(),idle=new window.companionMotion.SoftIdle(),reactionMotion=new window.companionMotion.ReactionMotion();
 function createDemo(){
@@ -70,13 +71,17 @@ function createDemo(){
  scene.add(g);return g;
 }
 function disposeRoot(root){if(root){scene.remove(root);VRMUtils.deepDispose(root);}}
+function applyOrientation(root){
+ modelOrientation.prepare(root,root===vrm?.scene?vrm.humanoid.getRawBoneNode('hips'):null);
+ const bob=root===demoRoot&&state.settings.softIdle?Math.sin(elapsed*1.8)*.018*state.settings.motionStrength:0;
+ modelOrientation.apply(root,orientationPreview||state.settings,bob);
+}
 function fitModel(root){
- if(!root)return;
- root.rotation.y=THREE.MathUtils.degToRad(state.settings.angle);
- root.updateMatrixWorld(true);
- const box=new THREE.Box3().setFromObject(root);
- if(box.isEmpty())return;
- const size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
+ if(!root)return;applyOrientation(root);
+ const box=modelOrientation.bounds(root);if(box.isEmpty())return;
+ const center=modelOrientation.center(root),size=new THREE.Vector3();
+ // Frame around the fixed pivot instead of moving the target with the rotated bounds.
+ for(const axis of ['x','y','z'])size[axis]=2*Math.max(Math.abs(box.min[axis]-center[axis]),Math.abs(box.max[axis]-center[axis]));
  const distance=window.companionLayout.fitDistance(size,camera.fov,camera.aspect);
  camera.position.set(center.x,center.y,center.z+distance);
  camera.far=Math.max(100,distance+size.z*2+size.y*2);
@@ -115,7 +120,7 @@ async function loadVRM(announce=false){
  cloth?.reset();hands?.reset();
  disposeRoot(modelRoot);disposeRoot(demoRoot);demoRoot=null;vrm=candidate;modelRoot=vrm.scene;scene.add(modelRoot);
  rest=window.companionMotion.capturePose(vrm);lips.stop();cloth=new window.companionCloth.ClothDrag(vrm,THREE.Vector3,state.settings);hands=new window.companionHand.HandDrag(vrm,THREE.Vector3);
- modelRoot.rotation.y=THREE.MathUtils.degToRad(state.settings.angle);fitModel(modelRoot);
+ applyOrientation(modelRoot);fitModel(modelRoot);
  if(announce)api.modelStatus('準備できたよ。話しかけてね。');
  }catch(e){if(candidate&&candidate!==vrm)VRMUtils.deepDispose(candidate.scene);api.modelStatus('VRMを読み込めませんでした：'+e.message);}
 }
@@ -132,8 +137,7 @@ function initMascot(){
  renderer.setAnimationLoop(()=>{
  const dt=Math.min(clock.getDelta(),.05);elapsed+=dt;
  const root=vrm?.scene||demoRoot;
- if(root)root.rotation.y=THREE.MathUtils.degToRad(state.settings.angle);
- if(demoRoot){demoRoot.position.y=state.settings.softIdle?Math.sin(elapsed*1.8)*.018*state.settings.motionStrength:0;}
+ if(root)applyOrientation(root);
  if(vrm){
  cloth?.restore();hands?.restore();
  idle.update(vrm,rest,elapsed,dt,{enabled:state.settings.softIdle,strength:state.settings.motionStrength,thinking:state.busy});
@@ -197,9 +201,10 @@ function initCharacterMouse(){
  }
  el.onpointerdown=e=>{
   if(down||e.button!==0||e.isPrimary===false||state.pass)return;const target=hit(e);if(!target)return;
-  const handGrab=!e.shiftKey&&state.settings.handDrag&&hands?.begin(target);
-  const grab=!handGrab&&!e.shiftKey&&state.settings.clothDrag&&cloth?.begin(target);
-  e.preventDefault();el.setPointerCapture(e.pointerId);down={id:e.pointerId,x:e.screenX,y:e.screenY,lastX:e.screenX,lastY:e.screenY,path:0,max:0,start:performance.now(),region:e.shiftKey?null:regionAt(target),cloth:!!grab,hand:!!handGrab,anchor:target.point.clone(),depth:target.point.clone().project(camera).z,moved:false};api.hit(true);
+  const rotate=!!e.ctrlKey;if(rotate){cloth?.reset();hands?.reset();}
+  const handGrab=!rotate&&!e.shiftKey&&state.settings.handDrag&&hands?.begin(target);
+  const grab=!rotate&&!handGrab&&!e.shiftKey&&state.settings.clothDrag&&cloth?.begin(target);
+  e.preventDefault();el.setPointerCapture(e.pointerId);down={id:e.pointerId,x:e.screenX,y:e.screenY,lastX:e.screenX,lastY:e.screenY,path:0,max:0,start:performance.now(),region:rotate||e.shiftKey?null:regionAt(target),rotate,roll:!!e.shiftKey,angles:{angleX:state.settings.angleX,angleY:state.settings.angleY,angleZ:state.settings.angleZ},cloth:!!grab,hand:!!handGrab,anchor:target.point.clone(),depth:target.point.clone().project(camera).z,moved:false};api.hit(true);
  };
  function track(e){
   down.path+=Math.hypot(e.screenX-down.lastX,e.screenY-down.lastY);down.lastX=e.screenX;down.lastY=e.screenY;
@@ -207,6 +212,9 @@ function initCharacterMouse(){
  }
  el.onpointermove=e=>{
   if(!down||e.pointerId!==down.id)return;track(e);
+  if(down.rotate){
+   if(down.max>3){down.moved=true;orientationPreview=window.companionLayout.rotationFromDrag(down.angles,e.screenX-down.x,e.screenY-down.y,down.roll);fitModel(vrm?.scene||demoRoot);}return;
+  }
   if(down.cloth||down.hand){
    const rect=el.getBoundingClientRect(),target=new THREE.Vector3((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1,down.depth).unproject(camera);
    const delta=target.sub(down.anchor);if(down.hand){if(down.max>6)hands.move(delta);}else cloth.move(delta);return;
@@ -218,7 +226,18 @@ function initCharacterMouse(){
  el.onpointerup=e=>{
   if(!down||e.pointerId!==down.id)return;track(e);const previous=down;down=null;
   if(el.hasPointerCapture(e.pointerId))el.releasePointerCapture(e.pointerId);
-  if(previous.hand){hands?.release();if(previous.max>6&&!state.pass)api.touch('hand','stroke');else if(previous.max<=6)api.action('talk');}
+  if(previous.rotate){
+   const angles=orientationPreview;orientationPreview=null;
+   if(previous.moved&&angles){
+    state.settings={...state.settings,...angles,angle:angles.angleY};
+    call(api.orientation(angles)).catch(error=>{
+     state.settings={...state.settings,...previous.angles,angle:previous.angles.angleY};
+     fitModel(vrm?.scene||demoRoot);api.modelStatus('向きを保存できません：'+error.message);
+    });
+   }
+   fitModel(vrm?.scene||demoRoot);
+  }
+  else if(previous.hand){hands?.release();if(previous.max>6&&!state.pass)api.touch('hand','stroke');else if(previous.max<=6)api.action('talk');}
   else if(previous.cloth){cloth?.release();if(previous.max>6&&!state.pass)api.touch('cloth','stroke');else if(previous.max<=6)api.action('talk');}
   else if(previous.region){
    const target=hit(e),region=target&&regionAt(target);
@@ -227,7 +246,7 @@ function initCharacterMouse(){
   }else if(previous.moved)api.drag('end',e.screenX,e.screenY);else api.action('talk');
   over=!!hit(e);api.hit(over);
  };
- function cancel(){cloth?.release();hands?.release();if(down){down=null;api.drag('end',0,0);}over=false;api.hit(false);}
+ function cancel(){if(orientationPreview){orientationPreview=null;fitModel(vrm?.scene||demoRoot);}cloth?.release();hands?.release();if(down){down=null;api.drag('end',0,0);}over=false;api.hit(false);}
  cancelInteraction=cancel;
  el.onpointercancel=cancel;el.onlostpointercapture=()=>{if(down)cancel();};window.addEventListener('blur',cancel);
  el.oncontextmenu=e=>{e.preventDefault();if(!state.pass&&hit(e)){cancel();api.action('menu');}};
@@ -235,21 +254,22 @@ function initCharacterMouse(){
 }
 api.onUpdate(data=>{
  if(!state)return;const before=state.settings;state={...state,...data};
+ const rotationChanged=['angleX','angleY','angleZ'].some(k=>before[k]!==state.settings[k]);
  if(isMascot){
   if(data.reply||data.greeting)moodUntil=elapsed+4;
   if(data.reaction)reactionMotion.trigger(data.reaction.emotion,performance.now()/1000);
   if(data.speech!==undefined){if(data.speech&&!data.thinking)lips.play(data.speech,performance.now()/1000);else if(!data.speech)lips.stop();}
   if(data.reloadVRM)loadVRM(true);
   if(data.settings)cloth?.configure?.(state.settings);
-  if(data.pass||data.settings&&(before.handDrag!==state.settings.handDrag||before.clothDrag!==state.settings.clothDrag||before.clothReach!==state.settings.clothReach||before.clothAngle!==state.settings.clothAngle||before.angle!==state.settings.angle||before.scale!==state.settings.scale)){cancelInteraction();cloth?.reset();hands?.reset();}
-  if(renderer&&(before.scale!==state.settings.scale||before.angle!==state.settings.angle))resizeViewport();
+  if(data.pass||data.settings&&(before.handDrag!==state.settings.handDrag||before.clothDrag!==state.settings.clothDrag||before.clothReach!==state.settings.clothReach||before.clothAngle!==state.settings.clothAngle||rotationChanged||before.scale!==state.settings.scale)){cancelInteraction();cloth?.reset();hands?.reset();}
+  if(renderer&&(before.scale!==state.settings.scale||rotationChanged))resizeViewport();
  }else if(view==='input'){
   $('inputName').textContent=state.settings.name+'に話しかける';setInputBusy();if(data.focusInput)focusInput();
  }else if(view==='bubble'){
   if(data.bubbleSide)document.body.dataset.side=data.bubbleSide;
   if(data.speech!==undefined||data.settings)updateSpeech(data.speech);
  }else{
-  if(!dirty)fillSettings(state.settings);$('companionName').textContent=state.settings.name;$('modelBadge').textContent=state.settings.model||'モデル未選択';
+  if(!dirty)fillSettings(state.settings);else if(rotationChanged)for(const k of ['angleX','angleY','angleZ'])$(k).value=state.settings[k];$('companionName').textContent=state.settings.name;$('modelBadge').textContent=state.settings.model||'モデル未選択';
   if(data.reply)pendingText='';renderHistory();updateBusy(state.busy);if(data.controlTab)selectControlTab(data.controlTab);
  }
 });
@@ -258,3 +278,4 @@ api.onUpdate(data=>{
  if(isMascot)initMascot();else if(view==='input')initInput();else if(view==='bubble')initSpeech();else{await initControl();$('companionName').textContent=state.settings.name;$('modelBadge').textContent=state.settings.model||'モデル未選択';}
 }catch(e){if(isMascot)api.modelStatus(e.message);else status(view==='input'?'inputStatus':view==='bubble'?'speechText':'chatStatus',e.message,true);}})();
 })();
+

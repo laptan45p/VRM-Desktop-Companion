@@ -125,6 +125,13 @@ handle('drag',(phase,x,y)=>{
  else if(drag&&phase==='move'){const b={...drag.bounds,x:Math.round(drag.bounds.x+x-drag.x),y:Math.round(drag.bounds.y+y-drag.y)};mascot.setBounds(b,false);}
  else if(phase==='end')drag=null;applyHit();
 },()=>mascot);
+handle('orientation',angles=>{
+ if(pass)return store.data.settings;
+ if(!angles||!['angleX','angleY','angleZ'].every(k=>typeof angles[k]==='number'&&Number.isFinite(angles[k])&&Math.abs(angles[k])<=180))throw new Error('回転角度が不正です。');
+ const previous=store.data.settings;store.data.settings=cleanSettings({...previous,angleX:angles.angleX,angleY:angles.angleY,angleZ:angles.angleZ});
+ try{store.save();}catch(e){store.data.settings=previous;throw e;}
+ broadcast();return store.data.settings;
+},()=>mascot);
 handle('bubble-size',(height)=>{if(!Number.isFinite(height))return;const r=area(),h=Math.min(Math.max(90,Math.round(height)),380,r.height);bubble.setBounds({...bubble.getBounds(),height:h,width:Math.min(320,r.width)},false);positionPopups();},()=>bubble);
 handle('model-status',text=>{if(typeof text==='string'&&text)speak(text.slice(0,1000));},()=>mascot);
 handle('chat',async text=>{
@@ -145,3 +152,4 @@ handle('action',name=>{
  else if(name==='menu')menu().popup({window:mascot});else if(name==='pass')setPass(!pass);else if(name==='hide')hideMascot();
  else if(name==='close-input')input.hide();else if(name==='close-bubble')hideSpeech();else if(name==='quit')app.quit();else if(name==='reset')resetMascot();
 });
+

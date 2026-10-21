@@ -92,3 +92,11 @@ test('hand reaction uses the LLM lane and can be disabled independently',async()
  let received;const {windows,timers,as,invoke}=await boot({model:'local'},async(_s,_h,r)=>{received=r;return '一緒に手をつなごう。';});await as(1,'touch','hand','stroke');await timers.at(-1).fn();assert.equal(received.region,'hand');assert.equal(received.emotion,'surprised');assert.ok(windows[3].events.some(e=>e.speech==='一緒に手をつなごう。'));
  await invoke('save',{...DEFAULTS,handDrag:false});const n=windows[1].events.length;await as(1,'touch','hand','stroke');assert.equal(windows[1].events.length,n);
 });
+
+
+test('orientation IPC validates mascot sender, persists angles and leaves windows independent',async()=>{
+ const {windows,invoke,as}=await boot(),angles={angleX:45,angleY:80,angleZ:-25},bounds=windows.map(w=>w.getBounds());
+ assert.equal((await invoke('orientation',angles)).ok,false);for(const value of [NaN,181])assert.equal((await as(1,'orientation',{...angles,angleX:value})).ok,false);
+ assert.equal((await as(1,'orientation',angles)).ok,true);const s=(await invoke('state')).data.settings;assert.equal(s.angle,80);assert.deepEqual(windows.map(w=>w.getBounds()),bounds);const next=await boot(s);assert.equal((await next.invoke('state')).data.settings.angleZ,-25);
+ await invoke('action','pass');await as(1,'orientation',{...angles,angleZ:100});assert.equal((await invoke('state')).data.settings.angleZ,-25);
+});
