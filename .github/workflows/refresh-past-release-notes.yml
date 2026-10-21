@@ -1,0 +1,36 @@
+name: Refresh past release notes
+on:
+  workflow_dispatch:
+  push:
+    branches: ['maintenance/past-release-notes']
+permissions:
+  contents: write
+concurrency:
+  group: refresh-release-notes
+  cancel-in-progress: false
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Read and prepare every published release
+        run: |
+          gh api --paginate --slurp "repos/$GH_REPO/releases?per_page=100" > releases-before.json
+          python scripts/refresh_release_notes.py --releases releases-before.json --output notes-plan
+      - name: Preserve original descriptions and replacement plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes-backup
+          path: |
+            releases-before.json
+            notes-plan/
+          retention-days: 30
+      - name: Update descriptions only
+        run: python scripts/refresh_release_notes.py --releases releases-before.json --output notes-plan --apply
