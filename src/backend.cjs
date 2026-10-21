@@ -10,6 +10,7 @@ function cleanSettings(input = {}) {
   const s = { ...DEFAULTS };
   for (const k of ['provider','endpoint','model','name','persona','modelPath','bubbleFont','motionFolder','greetingMotion','idleMotion','ttsEndpoint','speakerPath','ttsCaption']) if (typeof input[k] === 'string') s[k] = input[k].slice(0, k === 'persona' ? 12000 : 2000);
   if (!['ollama', 'lmstudio','openai','compatible'].includes(s.provider)) throw new Error('接続方式を選んでください。');
+  if(s.provider==='openai'&&!s.model.trim())s.model='gpt-6-luna';
   for (const [k,min,max] of [['temperature',0,2],['historyTurns',1,40],['scale',0.5,10.0],['angle',-180,180],['angleX',-180,180],['angleY',-180,180],['angleZ',-180,180],['motionStrength',0,1],['touchZoneScale',.75,1.4],['bubbleFontSize',8,72],['clothReach',.02,.5],['clothAngle',10,120],['motionInterval',10,3600],['idleSpeed',.1,3],['idlePose',0,100],['ttsSpeed',.25,4],['ttsVolume',0,1],['ttsTimeout',30,900],['cloudMaxTokens',128,8192]]) {
     if (Number.isFinite(Number(input[k]))) s[k] = Math.max(min, Math.min(max, Number(input[k])));
   }

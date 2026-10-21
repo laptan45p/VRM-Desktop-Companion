@@ -40,7 +40,7 @@ async function initControl(){
  const tabs=selectControlTab;
  $('chatTab').onclick=()=>tabs('chat');$('settingsTab').onclick=()=>tabs('settings');
  $('settingsForm').oninput=()=>{dirty=true;};
- $('provider').onchange=()=>{$('endpoint').value={ollama:'http://127.0.0.1:11434',lmstudio:'http://127.0.0.1:1234',openai:'https://api.openai.com/v1',compatible:''}[$('provider').value];$('apiKey').value='';setModels([],'');dirty=true;updateProviderUI();};
+ $('provider').onchange=()=>{$('endpoint').value={ollama:'http://127.0.0.1:11434',lmstudio:'http://127.0.0.1:1234',openai:'https://api.openai.com/v1',compatible:''}[$('provider').value];$('apiKey').value='';setModels([],$('provider').value==='openai'?'gpt-6-luna':'');dirty=true;updateProviderUI();};
  $('endpoint').oninput=()=>{dirty=true;$('apiKey').value='';refreshKeyStatus();};
  $('saveKey').onclick=wrap(async()=>{const key=$('apiKey').value;$('apiKey').value='';await call(api.saveKey(settingsFromForm(),key));await refreshKeyStatus();},'keyStatus');
  $('deleteKey').onclick=wrap(async()=>{await call(api.deleteKey(settingsFromForm()));$('apiKey').value='';await refreshKeyStatus();},'keyStatus');
