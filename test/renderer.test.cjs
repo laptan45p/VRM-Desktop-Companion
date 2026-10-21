@@ -18,11 +18,11 @@ async function boot(view,withModel=false,audioFixture=null,modelFixture=null){
  vm.runInNewContext(code,context);await new Promise(r=>setImmediate(r));
  return {node,calls,notify,listeners,events,rendered,tick:()=>frame?.(),advance:()=>now+=200,setFailure:v=>failSend=v};
 }
-test('input keeps failed text, supports IME-safe Enter and Escape, and hides after success',async()=>{
+test('input keeps failed text, supports IME-safe Enter and Escape, and stays open for successive messages',async()=>{
  const {node,calls,setFailure}=await boot('input');assert.equal(node('inputPanel').hidden,false);
  node('messageInput').value='こんにちは';setFailure(true);await node('inputForm').onsubmit({preventDefault(){}});assert.equal(node('messageInput').value,'こんにちは');assert.match(node('inputStatus').textContent,/接続/);
  const count=calls.length;node('messageInput').onkeydown({key:'Enter',isComposing:true,preventDefault(){}});assert.equal(calls.length,count);
- setFailure(false);await node('inputForm').onsubmit({preventDefault(){}});assert.equal(node('messageInput').value,'');assert.ok(calls.some(c=>c[0]==='action'&&c[1]==='close-input'));
+ setFailure(false);await node('inputForm').onsubmit({preventDefault(){}});assert.equal(node('messageInput').value,'');assert.ok(!calls.some(c=>c[0]==='action'&&c[1]==='close-input'));assert.equal(node('messageInput').focused,true);node('messageInput').value='続きの会話';await node('inputForm').onsubmit({preventDefault(){}});assert.ok(calls.some(c=>c[0]==='send'&&c[1]==='続きの会話'));assert.ok(!calls.some(c=>c[0]==='action'&&c[1]==='close-input'));
  node('messageInput').onkeydown({key:'Escape',preventDefault(){}});assert.equal(calls.at(-1)[1],'close-input');
 });
 test('speech is plain text, measured to fit and can be dismissed',async()=>{

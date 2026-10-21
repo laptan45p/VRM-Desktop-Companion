@@ -238,7 +238,7 @@ function initInput(){
  $('inputName').textContent=state.settings.name+'に話しかける';setInputBusy();
  $('inputForm').onsubmit=async e=>{e.preventDefault();if(state.busy)return;const text=$('messageInput').value.trim();if(!text)return;
   state.busy=true;setInputBusy();status('inputStatus','返答を考えています…');
-  try{await call(api.send(text));$('messageInput').value='';status('inputStatus','');await call(api.action('close-input'));}
+  try{await call(api.send(text));$('messageInput').value='';status('inputStatus','');}
   catch(e){status('inputStatus',e.message,true);}finally{state.busy=false;setInputBusy();focusInput();}
  };
  $('messageInput').onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();api.action('close-input');}else if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('inputForm').requestSubmit();}};

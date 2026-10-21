@@ -1,7 +1,8 @@
-# Validation — 0.1.25
+# Validation — 0.1.26
 
 133 tests passed after a fresh dependency install and renderer build:
 
+- Successful conversation submission keeps the input window open, clears sent text, restores focus and accepts a second message; failure retains text and Escape still closes.
 - Release archive smoke test checks both TTS wrappers and the UTF-8 BOM PowerShell helper in portable/update/source roots, CRLF wrappers and absence of installed TTS environments/logs.
 - Windows PowerShell helper smoke tests cover quoted paths with spaces/Japanese, clone and CUDA/Python sync arguments, dedicated environment/model, reinstall settings preservation, foreign-repository rejection, loopback launch, local-checkpoint override, occupied ports and sync failure handling.
 - All four window positions survive settings saves and restart; startup retains the mascot-only display style.
