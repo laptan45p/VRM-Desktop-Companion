@@ -42,7 +42,7 @@ function positionPopups(){
 function inputAreas(){return screen.getAllDisplays().map(d=>d.workArea);}
 function capturePosition(window,prefix){
  if(!window||window.isDestroyed())return;
- const b=window.getNormalBounds?.()||window.getBounds();store.data.settings[prefix+'X']=b.x;store.data.settings[prefix+'Y']=b.y;
+ const b=window===mascot?window.getBounds():(window.getNormalBounds?.()||window.getBounds());store.data.settings[prefix+'X']=b.x;store.data.settings[prefix+'Y']=b.y;
 }
 function captureDisplayAreas(){store.data.settings.displayAreas=(displayLayout||inputAreas()).map(r=>({...r}));}
 function rememberPosition(window,prefix){
@@ -162,7 +162,9 @@ if(gotLock)app.whenReady().then(async()=>{
  tray.on('click',()=>tray.popUpContextMenu(menu()));tray.on('right-click',()=>tray.popUpContextMenu(menu()));
  if(!globalShortcut.register('CommandOrControl+Alt+M',()=>setPass(!pass)))startupError+=' Ctrl+Alt+Mを登録できませんでした。';
  if(!globalShortcut.register('CommandOrControl+Alt+C',showInput))startupError+=' Ctrl+Alt+Cを登録できませんでした。';
- resizeMascot();applyHit();mascot.showInactive();if(startupError)speak(startupError,{voice:false});
+ // Creation/first show can adjust a native window's placement. Restore the
+ // saved rectangle after showing, rather than recentering around adjusted bounds.
+ applyHit();mascot.showInactive();mascot.setBounds(mascotLocation,false);capturePosition(mascot,'mascot');positionPopups();if(startupError)speak(startupError,{voice:false});
 });
 app.on('second-instance',()=>{if(input)showInput();});
 app.on('before-quit',()=>{

@@ -1,12 +1,12 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{EventEmitter}=require('node:events');
 const {cleanSettings,DEFAULTS}=require('../src/backend.cjs');const layout=require('../src/layout.cjs');
-async function boot(saved={},touchGenerate=async()=>'LLMの反応',motionFiles=null,tts=null,llm=null){
+async function boot(saved={},touchGenerate=async()=>'LLMの反応',motionFiles=null,tts=null,llm=null,windowFixture=null){
  const area={x:-1600,y:0,width:1600,height:900},handlers=new Map(),windows=[],screen=new EventEmitter(),app=new EventEmitter(),menus=[],trays=[],timers=[],intervals=[];let savedData=null,fileChoice='/motions',saveError=false;
  Object.assign(app,{requestSingleInstanceLock:()=>true,whenReady:()=>Promise.resolve(),getPath:()=>'/test-data',setAppUserModelId:()=>{},quit:()=>{}});
  screen.getPrimaryDisplay=()=>({workArea:area});screen.getDisplayMatching=()=>({workArea:area});screen.getAllDisplays=()=>[{workArea:area}];
  class Window extends EventEmitter{
-  constructor(options){super();this.options=options;this.visible=options.show!==false;this.events=[];this.bounds={x:options.x||0,y:options.y||0,width:options.width,height:options.height};this.webContents=new EventEmitter();Object.assign(this.webContents,{setWindowOpenHandler:()=>{},send:(event,value)=>this.events.push(value),session:{webRequest:{onBeforeRequest:()=>{}},setPermissionRequestHandler:()=>{}}});windows.push(this);}
-  async loadFile(){}getBounds(){return {...this.bounds};}setBounds(b){this.bounds={...b};}isDestroyed(){return false;}setAlwaysOnTop(v,level){this.topmost=v;this.topmostLevel=level;}moveTop(){this.raised=(this.raised||0)+1;}isVisible(){return this.visible;}isMinimized(){return !!this.minimized;}setIgnoreMouseEvents(v){this.ignore=v;}show(){this.visible=true;}showInactive(){this.visible=true;}hide(){this.visible=false;}focus(){this.focused=true;}
+  constructor(options){super();this.options=options;this.visible=options.show!==false;this.events=[];this.bounds={x:options.x||0,y:options.y||0,width:options.width,height:options.height};if(windows.length===1&&windowFixture)this.bounds=windowFixture('create',this.bounds);this.webContents=new EventEmitter();Object.assign(this.webContents,{setWindowOpenHandler:()=>{},send:(event,value)=>this.events.push(value),session:{webRequest:{onBeforeRequest:()=>{}},setPermissionRequestHandler:()=>{}}});windows.push(this);}
+  async loadFile(){}getBounds(){return {...this.bounds};}setBounds(b){this.bounds={...b};}isDestroyed(){return false;}setAlwaysOnTop(v,level){this.topmost=v;this.topmostLevel=level;}moveTop(){this.raised=(this.raised||0)+1;}isVisible(){return this.visible;}isMinimized(){return !!this.minimized;}setIgnoreMouseEvents(v){this.ignore=v;}show(){this.visible=true;}showInactive(){this.visible=true;if(windows[1]===this&&windowFixture)this.bounds=windowFixture('show',this.bounds);}hide(){this.visible=false;}focus(){this.focused=true;}
  }
  class Store{constructor(){this.file='/test-data/companion.json';this.data={settings:{...DEFAULTS,scale:.5,...saved},history:[]};}load(){}save(){if(saveError)throw new Error('test disk failure');savedData=structuredClone(this.data);}}
  const electron={app,BrowserWindow:Window,ipcMain:{handle:(k,v)=>handlers.set(k,v)},dialog:{showOpenDialog:async()=>({canceled:false,filePaths:[fileChoice]})},Menu:{buildFromTemplate:v=>{const m={items:v,popup:()=>{m.opened=true;}};menus.push(m);return m;}},Tray:class extends EventEmitter{constructor(){super();trays.push(this);}setToolTip(){}popUpContextMenu(m){this.menu=m;}},nativeImage:{createFromPath:()=>({})},globalShortcut:{register:()=>true,unregisterAll:()=>{}},screen};
@@ -231,4 +231,18 @@ test('topmost recovery raises only visible windows without focusing, and stops w
  mascot.topmost=false;mascot.emit('always-on-top-changed',{},false);assert.equal(mascot.topmost,true);mascot.topmost=false;mascot.emit('show');assert.equal(mascot.topmost,true);mascot.topmost=false;mascot.emit('restore');assert.equal(mascot.topmost,true);
  await b.invoke('save',{...DEFAULTS,topmost:false});const raised=mascot.raised;timer.fn();mascot.emit('restore');assert.equal(mascot.raised,raised);assert.equal(mascot.topmost,false);
  await b.invoke('save',{...DEFAULTS,topmost:true});b.app.emit('before-quit');assert.equal(timer.cleared,true);const end=mascot.raised;timer.fn();assert.equal(mascot.raised,end);
+});
+
+test('startup reapplies the saved mascot rectangle after native creation and first-show adjustment',async()=>{
+ const settings={...DEFAULTS,scale:5,mascotX:-2100,mascotY:-1400,inputX:-1000,inputY:300,bubbleX:-700,bubbleY:450,displayAreas:[{x:-1600,y:0,width:1600,height:900}]};
+ const b=await boot(settings,undefined,null,null,null,(_phase,bounds)=>({...bounds,x:-1500,y:100,width:800,height:600}));
+ const expected={...layout.mascotBounds(5,b.area),x:-2100,y:-1400};assert.deepEqual(b.windows[1].getBounds(),expected);
+ assert.equal(b.windows[2].getBounds().x,-1000);assert.equal(b.windows[2].getBounds().y,300);assert.equal(b.windows[3].getBounds().x,-700);assert.equal(b.windows[3].getBounds().y,450);
+ b.app.emit('before-quit');assert.equal(b.saved().settings.mascotX,-2100);assert.equal(b.saved().settings.mascotY,-1400);
+ const next=await boot(b.saved().settings,undefined,null,null,null,(_phase,bounds)=>({...bounds,x:0,y:0,width:640,height:480}));assert.deepEqual(next.windows[1].getBounds(),expected);
+});
+test('mascot saves its actual frameless bounds rather than stale normal-window placement',async()=>{
+ const b=await boot(),mascot=b.windows[1];mascot.getNormalBounds=()=>({x:0,y:0,width:800,height:600});
+ mascot.setBounds({...mascot.getBounds(),x:-1900,y:-200});mascot.emit('move');assert.equal((await b.invoke('state')).data.settings.mascotX,-1900);
+ b.app.emit('before-quit');assert.equal(b.saved().settings.mascotY,-200);
 });
