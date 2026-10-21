@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const voices=require('./voice-bindings.cjs');
 const DEFAULTS = {
   cloudMaxTokens: 1024, cloudReasoning: 'auto', cloudTemperature: false, compatibleTokenParam: 'max_tokens', provider: 'ollama', endpoint: 'http://127.0.0.1:11434', model: '',
   name: 'コンパニオン', persona: 'あなたはデスクトップに住む親しみやすい相棒です。日本語で自然に会話してください。返答は基本的に短く、相手の話をよく聞いてください。',
@@ -113,7 +114,7 @@ async function touchReply(settings,history,reaction,signal,{apiKey='',relationsh
  return answer.slice(0,160);
 }
 class Store {
-  constructor(dir) { this.file = path.join(dir, 'companion.json'); this.data = {settings:{...DEFAULTS},history:[],relationships:require('./relationship.cjs').clean(null,DEFAULTS.name)}; }
+  constructor(dir) { this.file = path.join(dir, 'companion.json'); this.data = {settings:{...DEFAULTS},history:[],voiceBindings:[],relationships:require('./relationship.cjs').clean(null,DEFAULTS.name)}; }
   load() {
     if (!fs.existsSync(this.file)) return;
     const raw = JSON.parse(fs.readFileSync(this.file, 'utf8'));
@@ -124,6 +125,7 @@ class Store {
     for(let i=0;i+1<items.length;i+=2) if(items[i]?.role==='user' && items[i+1]?.role==='assistant' && typeof items[i].content==='string' && typeof items[i+1].content==='string') history.push(items[i],items[i+1]);
     this.data.history=history.slice(-200);
     this.data.relationships=require('./relationship.cjs').clean(raw.relationships,this.data.settings.name);
+    this.data.voiceBindings=raw.voiceBindings;voices.initialize(this.data);
   }
   save() {
     fs.mkdirSync(path.dirname(this.file),{recursive:true});

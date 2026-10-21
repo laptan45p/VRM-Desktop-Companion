@@ -1,7 +1,10 @@
-# Validation — 0.1.26
+# Validation — 0.1.27
 
-133 tests passed after a fresh dependency install and renderer build:
+137 tests passed after a fresh dependency install and renderer build:
 
+- Per-VRM voice bindings migrate legacy settings, survive persistence/restart, normalize Windows paths, reject invalid entries and isolate demo/real models.
+- Switching VRMs restores embeddings, prompts for an unregistered voice and cancels stale audio before it can publish under the new model.
+- Voice-path labels update during VRM changes without discarding unsaved persona edits.
 - Successful conversation submission keeps the input window open, clears sent text, restores focus and accepts a second message; failure retains text and Escape still closes.
 - Release archive smoke test checks both TTS wrappers and the UTF-8 BOM PowerShell helper in portable/update/source roots, CRLF wrappers and absence of installed TTS environments/logs.
 - Windows PowerShell helper smoke tests cover quoted paths with spaces/Japanese, clone and CUDA/Python sync arguments, dedicated environment/model, reinstall settings preservation, foreign-repository rejection, loopback launch, local-checkpoint override, occupied ports and sync failure handling.
@@ -138,3 +141,5 @@ Ctrl-wheel is covered with renderer/IPC tests; physical mouse and touchpad behav
 Native Windows window placement and monitor reconnection still require verification on the target PC; automated coverage uses Electron window mocks and actual persisted Store data.
 
 The TTS helper Windows smoke tests replace Git/uv/GPU/network operations with fixtures. Actual WinGet installation, dependency downloads, GPU inference and the user Speaker Embedding still require validation on the target Windows PC.
+
+User reports confirm real OpenAI conversation and Irodori-TTS audio generation on their PC before this change. Automatic per-VRM switching is covered by fixtures; target-PC playback switching still needs confirmation.

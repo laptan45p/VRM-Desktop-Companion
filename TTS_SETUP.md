@@ -69,9 +69,11 @@ $env:IRODORI_CHECKPOINT = "F:\models\Irodori-TTS-v4-Large\model.safetensors"
 
 1. 右クリック → 設定 →「Irodori-TTS 読み上げ」。
 2. URLを `http://127.0.0.1:8088` にする。
-3. 「Speaker Embeddingを選ぶ」で、作成済みの `.speaker.safetensors` を選ぶ。
+3. 使用するVRMを読み込んだ状態で、「Speaker Embeddingを選ぶ」から作成済みの `.speaker.safetensors` を選ぶ。現在のVRMとの組み合わせを自動保存します。
 4. 「キャラクターの発言を読み上げる」を有効にする。必要に応じて話し方、速度、音量、生成待ち時間を調整する。
 5. 「設定を保存」→「声を試す」。
+
+VRMを切り替えると、登録したSpeaker Embeddingへ自動で切り替わります。初めてのVRMでは未選択になり、文字だけで応答するので、そのモデルの声を登録してください。同じEmbeddingを複数のVRMへ指定することもできます。切り替え前の音声の生成待ち・再生は停止します。
 
 Speaker Studioのプロジェクト内にある作成済みファイルも、その場所から直接選べます。ファイルのパスを同じPCのサーバーへ渡すため、別の場所へ移動したら選び直してください。Docker内のパスや別PCのサーバーには対応しません。
 

@@ -367,6 +367,7 @@ api.onUpdate(data=>{
   if(data.speech!==undefined||data.settings)updateSpeech(data.speech);
  }else{
   if(data.voiceStatus!==undefined)status('voiceStatus',data.voiceStatus);
+  if(data.settings){$('speakerPath').textContent=state.settings.speakerPath||'Speaker Embedding未選択';$('vrmPath').textContent=state.settings.modelPath||'VRM未選択：デモ表示';}
   if(data.reloadMotions)refreshMotionOptions();
   if(!dirty)fillSettings(state.settings);else{if(rotationChanged)for(const k of ['angleX','angleY','angleZ'])$(k).value=state.settings[k];if(before.scale!==state.settings.scale)$('scale').value=state.settings.scale;}$('companionName').textContent=state.settings.name;$('modelBadge').textContent=state.settings.model||'モデル未選択';
   if(data.reply)pendingText='';renderRelationship();renderHistory();updateBusy(state.busy);if(data.controlTab)selectControlTab(data.controlTab);

@@ -1,4 +1,5 @@
 'use strict';
+const voices=require('./voice-bindings.cjs');
 const relationship=require('./relationship.cjs');
 const motionFiles=require('./vrma-files.cjs');
 const {ApiKeys}=require('./api-keys.cjs');
@@ -70,8 +71,8 @@ function hideSpeech(){cancelVoice();touchResponses.cancel();clearTimeout(speechT
 function speak(text,{thinking=false,touch=false,voice=true}={}){
  if(!touch)touchResponses.cancel();
  cancelVoice(false);clearTimeout(speechTimer);speech=String(text).slice(0,12000);
- const useVoice=!!(speech&&!thinking&&voice&&store.data.settings.ttsEnabled);
- voiceStatus=useVoice?'音声を生成中…':'';broadcast({speech,thinking,speechId:voiceId,ttsPending:useVoice,voiceStatus});positionPopups();
+ const wantsVoice=!!(speech&&!thinking&&voice&&store.data.settings.ttsEnabled),useVoice=wantsVoice&&!!store.data.settings.speakerPath;
+ voiceStatus=useVoice?'音声を生成中…':wantsVoice?'このVRMのSpeaker Embeddingは未登録です。文字で表示します。':'';broadcast({speech,thinking,speechId:voiceId,ttsPending:useVoice,voiceStatus});positionPopups();
  if(speech){bubble.showInactive();if(!thinking){if(useVoice)voiceLane.request(voiceId,{...store.data.settings,ttsCaption:[store.data.settings.ttsCaption,relationship.caption(relationship.current(store.data.relationships))].filter(Boolean).join('。')},speech);else armSpeechTimer();}}
  else bubble.hide();
 }
@@ -102,13 +103,14 @@ async function selectVRM(){
  if(active)throw new Error('生成を停止してからVRMを変更してください。');
  cancelVoice();touchResponses.cancel();reactions.reset();
  const previous=structuredClone(store.data);
- store.data.history=relationship.forModel(store.data.relationships,file,path.basename(file,path.extname(file)),store.data.history);store.data.settings.modelPath=file;
+ store.data.history=relationship.forModel(store.data.relationships,file,path.basename(file,path.extname(file)),store.data.history);store.data.settings.modelPath=file;store.data.settings.speakerPath=voices.lookup(store.data,file);
  try{store.save();}catch(e){store.data=previous;throw e;}mascot.show();broadcast({reloadVRM:true});return file;
 }
 if(gotLock)app.whenReady().then(async()=>{
  app.setAppUserModelId('local.vrm.desktop.companion');store=new Store(app.getPath('userData'));keys=new ApiKeys(app.getPath('userData'),safeStorage);
  try{keys.load();}catch{startupError='APIキーの保存データを読み込めません。クラウド利用時は登録し直してください。';}
  try{store.load();}catch(e){startupError='保存データを読み込めませんでした。設定を確認してください。';try{await fs.copyFile(store.file,store.file+'.backup-'+Date.now());}catch{}}
+ voices.initialize(store.data);
  store.data.relationships=relationship.clean(store.data.relationships,store.data.settings.name);
  if(store.data.settings.modelPath&&!store.data.relationships.bindings.length)relationship.select(store.data.relationships,store.data.relationships.active,store.data.settings.modelPath,store.data.history);
  const webPreferences={preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,autoplayPolicy:'no-user-gesture-required'};
@@ -148,7 +150,7 @@ app.on('before-quit',()=>{
 });
 app.on('will-quit',()=>globalShortcut.unregisterAll());app.on('window-all-closed',()=>app.quit());
 function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=>{if(!allWindows().some(w=>w.webContents===e.sender)||only&&e.sender!==only()?.webContents)throw new Error('不明なウィンドウです。');return fn(...args);}));}
-handle('state',()=>({...store.data,version:app.getVersion?.()||'',relationships:undefined,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus}));
+handle('state',()=>({...store.data,version:app.getVersion?.()||'',relationships:undefined,voiceBindings:undefined,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus}));
 handle('save',settings=>{
  if(active)throw new Error('生成を停止してから設定を変更してください。');
  const cleaned=cleanSettings(settings);if(isCloud(cleaned.provider))llmBase(cleaned);
@@ -157,9 +159,14 @@ handle('save',settings=>{
  for(const w of [mascot,input,bubble])w.setAlwaysOnTop(store.data.settings.topmost);resizeMascot();broadcast();return store.data.settings;
 });
 handle('choose-speaker',async()=>{
- const r=await dialog.showOpenDialog(control,{title:'Speaker Embeddingを選択',filters:[{name:'Speaker Embedding',extensions:['safetensors']}],properties:['openFile']});if(r.canceled)return null;
- const file=await checkEmbedding(r.filePaths[0]),previous=store.data.settings;cancelVoice();store.data.settings={...previous,speakerPath:file};
- try{store.save();}catch(e){store.data.settings=previous;throw e;}broadcast();return file;
+ if(active)throw new Error('生成を停止してから声を変更してください。');
+ const modelPath=store.data.settings.modelPath;
+ const r=await dialog.showOpenDialog(control,{title:'このVRMのSpeaker Embeddingを選択',filters:[{name:'Speaker Embedding',extensions:['safetensors']}],properties:['openFile']});if(r.canceled)return null;
+ const file=await checkEmbedding(r.filePaths[0]);
+ if(active)throw new Error('生成を停止してから声を変更してください。');
+ if(voices.key(modelPath)!==voices.key(store.data.settings.modelPath))throw new Error('VRMが切り替わりました。声を選び直してください。');
+ const previous=structuredClone(store.data);cancelVoice();touchResponses.cancel();store.data.settings={...store.data.settings,speakerPath:file};voices.bind(store.data,modelPath,file);
+ try{store.save();}catch(e){store.data=previous;throw e;}broadcast();return file;
 },()=>control);
 handle('voice-state',(id,phase,error)=>{if(!Number.isSafeInteger(id)||!['start','ended','error'].includes(phase))throw new Error('音声状態が不正です。');finishVoice(id,phase,error);},()=>mascot);
 handle('choose-motions',async()=>{
@@ -244,7 +251,7 @@ handle('relationship',(operation,value)=>{
 },()=>control);
 handle('cancel',()=>{cancelVoice();touchResponses.cancel();active?.abort();});handle('clear',()=>{touchResponses.cancel();if(active)throw new Error('生成を停止してください。');store.data.history=[];store.save();broadcast();});
 handle('action',name=>{
- if(name==='test-voice'){if(!store.data.settings.ttsEnabled)throw new Error('読み上げを有効にして設定を保存してください。');speak('こんにちは。これから、この声でお話しするね。');}
+ if(name==='test-voice'){if(!store.data.settings.ttsEnabled)throw new Error('読み上げを有効にして設定を保存してください。');if(!store.data.settings.speakerPath)throw new Error('このVRMのSpeaker Embeddingを選択してください。');speak('こんにちは。これから、この声でお話しするね。');}
  else if(name==='stop-voice'){cancelVoice();armSpeechTimer();}
  else if(name==='test-motion'){speak('こんにちは。こんな感じでお話しするよ。よろしくね。');broadcast({greeting:true});}
  else if(name==='reset-bubble'){const b=bubble.getBounds();bubble.setBounds(popupBounds(mascot.getBounds(),b.width,b.height,area(),'bubble'),false);rememberPosition(bubble,'bubble');positionPopups();}

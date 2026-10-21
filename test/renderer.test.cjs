@@ -179,3 +179,7 @@ test('model list errors and empty responses are visible and changing providers i
  finish({ok:true,data:['current']});await newer;assert.equal(node('modelList').children[0].value,'current');
  const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');assert.ok(html.indexOf('id="fetchModels"')<html.indexOf('id="connectionStatus"'));assert.ok(html.indexOf('id="connectionStatus"')<html.indexOf('id="cloudSettings"'));
 });
+
+test('VRM voice changes update the selected embedding label even while other settings are unsaved',async()=>{
+ const {node,notify}=await boot('control');node('persona').value='未保存の性格';node('settingsForm').oninput({target:node('persona')});notify({settings:{...DEFAULTS,modelPath:'B.vrm',speakerPath:'B.speaker.safetensors'}});assert.equal(node('speakerPath').textContent,'B.speaker.safetensors');assert.equal(node('vrmPath').textContent,'B.vrm');assert.equal(node('persona').value,'未保存の性格');
+});
