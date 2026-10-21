@@ -1,6 +1,6 @@
 {
   "name": "vrm-desktop-companion",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "private": true,
   "description": "Local LLM desktop companion prototype for Windows",
   "main": "src/main.cjs",

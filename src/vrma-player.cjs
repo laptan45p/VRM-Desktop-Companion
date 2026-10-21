@@ -22,7 +22,7 @@
   }
   update(dt,now,{blocked=false,speaking=false}={}){
    this.time=now;
-   if(blocked){this.interrupt(now);return;}
+   if(blocked){if(this.current)this.stop(now);this.defer(now);return;}
    if(speaking&&!this.pending&&!this.current){this.defer(now);return;}
    if(this.pending&&this.clips.size){this.pending=false;this.play(this.settings.greetingMotion);}
    if(!this.current&&this.settings.randomMotion&&this.clips.size&&now>=this.next)this.play(this.pick());

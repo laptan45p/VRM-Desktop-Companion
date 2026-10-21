@@ -1,6 +1,6 @@
-# Validation — 0.1.14
+# Validation — 0.1.15
 
-75 tests passed after a fresh dependency install and renderer build:
+76 tests passed after a fresh dependency install and renderer build:
 
 - Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
 - VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
@@ -74,3 +74,5 @@ Native Windows visual interaction has not been verified in this environment.
 - Folder selection, registered-file reads, sender checks, external-resource and malformed GLB rejection, interval bounds and persisted settings.
 - Separately loaded all seven user-supplied VRMA files and sampled each at 100 time points on both VRM format fixtures. Every bone transform remained finite (14 clip/model combinations). The supplied files are not committed or redistributed.
 - Native Windows visual appearance and manual gesture interaction remain unverified in this environment.
+
+- Suspended VRMA playback preserves pose changes from the existing idle animation.

@@ -24,3 +24,7 @@ test('motion folder scanning, GLB validation and selection reject unregistered/e
  const b=require('./vrma-fixture.cjs')(),n=b.readUInt32LE(12),g=JSON.parse(b.subarray(20,20+n).toString());g.buffers[0].uri='file:///test';let j=Buffer.from(JSON.stringify(g));j=Buffer.concat([j,Buffer.alloc((4-j.length%4)%4,32)]);const h=Buffer.from(b.subarray(0,20));h.writeUInt32LE(j.length+20,8);h.writeUInt32LE(j.length,12);assert.throws(()=>files.validate(Buffer.concat([h,j])),/外部/);
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
+
+test('suspending automatic motion leaves the existing idle pose free to animate',async()=>{
+ const {vrm}=await setup(),p=new VrmaPlayer(T);p.bind(vrm);const head=vrm.humanoid.getNormalizedBoneNode('head');head.rotation.x=.12;p.update(.05,1,{blocked:true});assert.ok(Math.abs(head.rotation.x-.12)<1e-8);head.rotation.x=.16;p.update(.05,2,{blocked:true});assert.ok(Math.abs(head.rotation.x-.16)<1e-8);
+});
