@@ -208,3 +208,6 @@ test('input log preserves reading position on updates and follows new replies on
  area.scrollTop=900;notify({history:[...history,{role:'assistant',content:'次の返答'}],reply:'次の返答'});assert.equal(area.scrollTop,1000);
  area.scrollTop=150;notify({settings:{...DEFAULTS,modelPath:'other.vrm'},history:[]});assert.equal(area.scrollTop,1000);
 });
+test('topmost menu updates the settings checkbox without discarding an unsaved persona',async()=>{
+ const {node,notify}=await boot('control');node('persona').value='未保存の性格';node('settingsForm').oninput();notify({settings:{...DEFAULTS,topmost:false}});assert.equal(node('topmost').checked,false);assert.equal(node('persona').value,'未保存の性格');notify({settings:{...DEFAULTS,topmost:true}});assert.equal(node('topmost').checked,true);
+});

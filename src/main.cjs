@@ -11,7 +11,7 @@ const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,scr
 const fs=require('node:fs/promises'),path=require('node:path');
 const {mascotBounds,popupBounds,clampPosition,restoreInputBounds,restoreMascotBounds}=require('./layout.cjs');
 const {Store,cleanSettings,listModels,chat,touchReply,isCloud,llmBase}=require('./backend.cjs');
-let store,keys,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null,voiceId=0,voiceAwaiting=null,voiceStatus='',wheelAnchor=null,displayLayout=null;
+let store,keys,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null,voiceId=0,voiceAwaiting=null,voiceStatus='',wheelAnchor=null,displayLayout=null,topmostInterval=null;
 const touchResponses=new TouchResponder({generate:(s,h,r,signal)=>touchReply(s,h,r,signal,{apiKey:credentials(s),relationshipContext:relationship.context(relationship.current(store.data.relationships))}),publish:(text,reaction)=>{speak(text,{touch:true});broadcast({reaction});}});
 const voiceLane=new VoiceLane({publish:audio=>{
  if(audio.id!==voiceId)return;voiceAwaiting=audio.id;clearTimeout(speechTimer);voiceStatus='音声の再生準備中…';broadcast({voiceStatus});
@@ -64,6 +64,23 @@ function resizeMascot(reset=false,anchor=null){
  mascot.setBounds(bounds,false);positionPopups();
 }
 function applyHit(){if(mascot&&!mascot.isDestroyed())mascot.setIgnoreMouseEvents(pass||(!hovered&&!drag),{forward:true});}
+function refreshTopmost(){
+ if(app.isQuitting||!store?.data.settings.topmost)return;
+ // Restore z-order without show()/focus(): hidden windows stay hidden and other
+ // applications keep keyboard focus. Keep the conversation above the avatar.
+ for(const w of [mascot,bubble,input])if(w&&!w.isDestroyed()&&w.isVisible()&&!w.isMinimized?.()){
+  w.setAlwaysOnTop(true,'screen-saver');w.moveTop();
+ }
+}
+function applyTopmost(){
+ for(const w of [mascot,input,bubble])if(w&&!w.isDestroyed())w.setAlwaysOnTop(store.data.settings.topmost,store.data.settings.topmost?'screen-saver':'normal');
+ refreshTopmost();
+}
+function toggleTopmost(){
+ const previous=store.data.settings.topmost;store.data.settings.topmost=!previous;
+ try{store.save();}catch(e){store.data.settings.topmost=previous;speak('最前面の設定を保存できませんでした: '+e.message,{voice:false});return;}
+ applyTopmost();broadcast();
+}
 function setPass(value){touchResponses.cancel();pass=!!value;drag=null;applyHit();broadcast();}
 function resetMascot(){resizeMascot(true);mascot.show();setPass(false);}
 function hideMascot(){cancelVoice();touchResponses.cancel();mascot.hide();bubble.hide();input.hide();drag=null;applyHit();broadcast({mascotVisible:false});}
@@ -92,6 +109,7 @@ function menu(){return Menu.buildFromTemplate([
  {label:'マスコットを表示',click:()=>{mascot.show();applyHit();broadcast({mascotVisible:true});}},
  {label:'マスコットを隠す',click:hideMascot},
  {label:'位置をリセット',click:resetMascot},
+ {label:'常に手前に表示（キャラクター・会話・吹き出し）',type:'checkbox',checked:store.data.settings.topmost,click:toggleTopmost},
  {label:'クリック操作を無効にする（Ctrl+Alt+M）',type:'checkbox',checked:pass,click:()=>setPass(!pass)},
  {type:'separator'},{label:'終了',click:()=>app.quit()}
 ]);}
@@ -132,6 +150,8 @@ if(gotLock)app.whenReady().then(async()=>{
  control.webContents.session.setPermissionRequestHandler((_wc,_permission,cb)=>cb(false));
  await Promise.all([control.loadFile(path.join(__dirname,'index.html'),{query:{view:'control'}}),mascot.loadFile(path.join(__dirname,'index.html'),{query:{view:'mascot'}}),input.loadFile(path.join(__dirname,'index.html'),{query:{view:'input'}}),bubble.loadFile(path.join(__dirname,'index.html'),{query:{view:'bubble'}})]);
  for(const w of [control,input,bubble])w.on('close',e=>{if(!app.isQuitting){e.preventDefault();w.hide();}});
+ for(const w of [mascot,input,bubble]){w.on('show',refreshTopmost);w.on('restore',refreshTopmost);w.on('always-on-top-changed',(_e,on)=>{if(!on)refreshTopmost();});}
+ applyTopmost();topmostInterval=setInterval(refreshTopmost,2000);topmostInterval.unref?.();
  mascot.on('close',e=>{if(!app.isQuitting){e.preventDefault();hideMascot();}});
  control.on('move',()=>rememberPosition(control,'control'));
  input.on('move',()=>rememberPosition(input,'input'));
@@ -146,7 +166,7 @@ if(gotLock)app.whenReady().then(async()=>{
 });
 app.on('second-instance',()=>{if(input)showInput();});
 app.on('before-quit',()=>{
- app.isQuitting=true;cancelVoice(false);touchResponses.cancel();active?.abort();clearTimeout(speechTimer);clearTimeout(inputSaveTimer);inputSaveTimer=null;
+ app.isQuitting=true;clearInterval(topmostInterval);topmostInterval=null;cancelVoice(false);touchResponses.cancel();active?.abort();clearTimeout(speechTimer);clearTimeout(inputSaveTimer);inputSaveTimer=null;
  if(store){for(const [w,prefix] of [[control,'control'],[mascot,'mascot'],[input,'input'],[bubble,'bubble']])capturePosition(w,prefix);captureDisplayAreas();try{store.save();}catch(e){console.error('終了時の位置を保存できません:',e.message);}}
 });
 app.on('will-quit',()=>globalShortcut.unregisterAll());app.on('window-all-closed',()=>app.quit());
@@ -157,7 +177,7 @@ handle('save',settings=>{
  const cleaned=cleanSettings(settings);if(isCloud(cleaned.provider))llmBase(cleaned);
  cancelVoice();touchResponses.cancel();clearTimeout(speechTimer);if(speech)armSpeechTimer();
  store.data.settings=cleanSettings({...settings,speakerPath:store.data.settings.speakerPath,modelPath:store.data.settings.modelPath,motionFolder:store.data.settings.motionFolder,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY,bubbleX:store.data.settings.bubbleX,bubbleY:store.data.settings.bubbleY,mascotX:store.data.settings.mascotX,mascotY:store.data.settings.mascotY,controlX:store.data.settings.controlX,controlY:store.data.settings.controlY,displayAreas:store.data.settings.displayAreas});store.save();
- for(const w of [mascot,input,bubble])w.setAlwaysOnTop(store.data.settings.topmost);resizeMascot();broadcast();return store.data.settings;
+ applyTopmost();resizeMascot();broadcast();return store.data.settings;
 });
 handle('choose-speaker',async()=>{
  if(active)throw new Error('生成を停止してから声を変更してください。');

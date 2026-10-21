@@ -1,20 +1,20 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{EventEmitter}=require('node:events');
 const {cleanSettings,DEFAULTS}=require('../src/backend.cjs');const layout=require('../src/layout.cjs');
 async function boot(saved={},touchGenerate=async()=>'LLMの反応',motionFiles=null,tts=null,llm=null){
- const area={x:-1600,y:0,width:1600,height:900},handlers=new Map(),windows=[],screen=new EventEmitter(),app=new EventEmitter(),menus=[],trays=[],timers=[];let savedData=null,fileChoice='/motions',saveError=false;
+ const area={x:-1600,y:0,width:1600,height:900},handlers=new Map(),windows=[],screen=new EventEmitter(),app=new EventEmitter(),menus=[],trays=[],timers=[],intervals=[];let savedData=null,fileChoice='/motions',saveError=false;
  Object.assign(app,{requestSingleInstanceLock:()=>true,whenReady:()=>Promise.resolve(),getPath:()=>'/test-data',setAppUserModelId:()=>{},quit:()=>{}});
  screen.getPrimaryDisplay=()=>({workArea:area});screen.getDisplayMatching=()=>({workArea:area});screen.getAllDisplays=()=>[{workArea:area}];
  class Window extends EventEmitter{
   constructor(options){super();this.options=options;this.visible=options.show!==false;this.events=[];this.bounds={x:options.x||0,y:options.y||0,width:options.width,height:options.height};this.webContents=new EventEmitter();Object.assign(this.webContents,{setWindowOpenHandler:()=>{},send:(event,value)=>this.events.push(value),session:{webRequest:{onBeforeRequest:()=>{}},setPermissionRequestHandler:()=>{}}});windows.push(this);}
-  async loadFile(){}getBounds(){return {...this.bounds};}setBounds(b){this.bounds={...b};}isDestroyed(){return false;}setAlwaysOnTop(v){this.topmost=v;}setIgnoreMouseEvents(v){this.ignore=v;}show(){this.visible=true;}showInactive(){this.visible=true;}hide(){this.visible=false;}focus(){this.focused=true;}
+  async loadFile(){}getBounds(){return {...this.bounds};}setBounds(b){this.bounds={...b};}isDestroyed(){return false;}setAlwaysOnTop(v,level){this.topmost=v;this.topmostLevel=level;}moveTop(){this.raised=(this.raised||0)+1;}isVisible(){return this.visible;}isMinimized(){return !!this.minimized;}setIgnoreMouseEvents(v){this.ignore=v;}show(){this.visible=true;}showInactive(){this.visible=true;}hide(){this.visible=false;}focus(){this.focused=true;}
  }
  class Store{constructor(){this.file='/test-data/companion.json';this.data={settings:{...DEFAULTS,scale:.5,...saved},history:[]};}load(){}save(){if(saveError)throw new Error('test disk failure');savedData=structuredClone(this.data);}}
  const electron={app,BrowserWindow:Window,ipcMain:{handle:(k,v)=>handlers.set(k,v)},dialog:{showOpenDialog:async()=>({canceled:false,filePaths:[fileChoice]})},Menu:{buildFromTemplate:v=>{const m={items:v,popup:()=>{m.opened=true;}};menus.push(m);return m;}},Tray:class extends EventEmitter{constructor(){super();trays.push(this);}setToolTip(){}popUpContextMenu(m){this.menu=m;}},nativeImage:{createFromPath:()=>({})},globalShortcut:{register:()=>true,unregisterAll:()=>{}},screen};
- const context={require:p=>p==='electron'?electron:p==='./api-keys.cjs'?{ApiKeys:class{constructor(){this.entries=new Map();}load(){}available(){return true;}scope(s){return s.provider+' '+require('../src/backend.cjs').llmBase(s);}has(s){return this.entries.has(this.scope(s));}get(s){return this.entries.get(this.scope(s))||'';}set(s,key){this.entries.set(this.scope(s),key);}delete(s){this.entries.delete(this.scope(s));}}}:p==='./tts.cjs'?(tts||require('../src/tts.cjs')):p==='./vrma-files.cjs'?(motionFiles||require('../src/vrma-files.cjs')):p==='./backend.cjs'?{Store,cleanSettings,isCloud:require('../src/backend.cjs').isCloud,llmBase:require('../src/backend.cjs').llmBase,chat:llm?.chat|| (async(_s,_h,t)=>'返事：'+t),listModels:llm?.listModels||(async()=>[]),touchReply:touchGenerate}:p==='./voice-bindings.cjs'?require('../src/voice-bindings.cjs'):p==='./relationship.cjs'?require('../src/relationship.cjs'):p==='./layout.cjs'?layout:p==='./interaction.cjs'?require('../src/interaction.cjs'):p==='./touch-response.cjs'?{TouchResponder:class extends require('../src/touch-response.cjs').TouchResponder{constructor(options){super({...options,setTimer:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimer:()=>{}});}}}:require(p),__dirname:path.resolve(__dirname,'../src'),structuredClone,AbortController,console,setTimeout:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimeout:()=>{}};
+ const context={require:p=>p==='electron'?electron:p==='./api-keys.cjs'?{ApiKeys:class{constructor(){this.entries=new Map();}load(){}available(){return true;}scope(s){return s.provider+' '+require('../src/backend.cjs').llmBase(s);}has(s){return this.entries.has(this.scope(s));}get(s){return this.entries.get(this.scope(s))||'';}set(s,key){this.entries.set(this.scope(s),key);}delete(s){this.entries.delete(this.scope(s));}}}:p==='./tts.cjs'?(tts||require('../src/tts.cjs')):p==='./vrma-files.cjs'?(motionFiles||require('../src/vrma-files.cjs')):p==='./backend.cjs'?{Store,cleanSettings,isCloud:require('../src/backend.cjs').isCloud,llmBase:require('../src/backend.cjs').llmBase,chat:llm?.chat|| (async(_s,_h,t)=>'返事：'+t),listModels:llm?.listModels||(async()=>[]),touchReply:touchGenerate}:p==='./voice-bindings.cjs'?require('../src/voice-bindings.cjs'):p==='./relationship.cjs'?require('../src/relationship.cjs'):p==='./layout.cjs'?layout:p==='./interaction.cjs'?require('../src/interaction.cjs'):p==='./touch-response.cjs'?{TouchResponder:class extends require('../src/touch-response.cjs').TouchResponder{constructor(options){super({...options,setTimer:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimer:()=>{}});}}}:require(p),__dirname:path.resolve(__dirname,'../src'),setInterval:(fn,ms)=>{const t={fn,ms,unref(){}};intervals.push(t);return t;},clearInterval:t=>{if(t)t.cleared=true;},structuredClone,AbortController,console,setTimeout:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimeout:()=>{}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8'),context);await new Promise(r=>setImmediate(r));
  const invoke=(channel,...args)=>handlers.get(channel)({sender:windows[0].webContents},...args);
  const as=(i,channel,...args)=>handlers.get(channel)({sender:windows[i].webContents},...args);
- return {area,handlers,windows,screen,app,menus,trays,timers,invoke,as,saved:()=>savedData,chooseFile:file=>fileChoice=file,failSave:value=>saveError=value};
+ return {area,handlers,windows,screen,app,menus,trays,timers,intervals,invoke,as,saved:()=>savedData,chooseFile:file=>fileChoice=file,failSave:value=>saveError=value};
 }
 test('startup shows only the mascot; scale is independent of the screen and reset is explicit',async()=>{
  const {area,windows,screen,invoke}=await boot();assert.equal(windows.length,4);const [control,mascot,input,bubble]=windows;
@@ -206,4 +206,29 @@ test('enlarged conversation window keeps its composer on-screen after upgrading 
  const {windows,area}=await boot({inputX:-500,inputY:670}),input=windows[2];
  assert.equal(input.options.resizable,true);assert.equal(input.bounds.height,520);
  assert.ok(input.bounds.y+input.bounds.height<=area.y+area.height);assert.equal(input.bounds.x,-500);
+});
+
+test('topmost setting covers mascot, input and balloon across settings, menu and restart',async()=>{
+ const b=await boot({topmost:false});for(const i of [1,2,3])assert.equal(b.windows[i].options.alwaysOnTop,false);assert.notEqual(b.windows[0].options.alwaysOnTop,true);
+ await b.invoke('save',{...DEFAULTS,topmost:true});for(const i of [1,2,3])assert.equal(b.windows[i].topmost,true);assert.equal(b.windows[0].topmost,undefined);
+ await b.invoke('action','menu');let item=b.menus.at(-1).items.find(x=>x.label?.startsWith('常に手前に表示'));assert.equal(item.type,'checkbox');assert.equal(item.checked,true);
+ const before=b.windows.map(w=>({bounds:w.getBounds(),visible:w.visible}));item.click();for(const i of [1,2,3])assert.equal(b.windows[i].topmost,false);assert.equal(b.saved().settings.topmost,false);
+ assert.deepEqual(b.windows.map(w=>({bounds:w.getBounds(),visible:w.visible})),before);
+ await b.invoke('action','menu');item=b.menus.at(-1).items.find(x=>x.label?.startsWith('常に手前に表示'));assert.equal(item.checked,false);
+ const next=await boot(b.saved().settings);for(const i of [1,2,3])assert.equal(next.windows[i].options.alwaysOnTop,false);
+ item.click();assert.equal(b.saved().settings.topmost,true);assert.ok(b.windows[2].events.some(e=>e.settings?.topmost===true));
+});
+test('failed topmost menu save retains the setting and existing window flags',async()=>{
+ const b=await boot({topmost:true});await b.invoke('save',{...DEFAULTS,topmost:true});await b.invoke('action','menu');b.failSave(true);
+ b.menus.at(-1).items.find(x=>x.label?.startsWith('常に手前に表示')).click();assert.equal((await b.invoke('state')).data.settings.topmost,true);for(const i of [1,2,3])assert.equal(b.windows[i].topmost,true);
+ assert.ok(b.windows[2].events.some(e=>e.speech?.includes('最前面の設定を保存できません')));
+});
+test('topmost recovery raises only visible windows without focusing, and stops when disabled or quitting',async()=>{
+ const b=await boot({topmost:true}),[control,mascot,input,bubble]=b.windows,timer=b.intervals[0];assert.equal(timer.ms,2000);assert.equal(mascot.topmostLevel,'screen-saver');
+ for(const w of b.windows)w.focused=false;input.show();bubble.show();
+ const before=b.windows.map(w=>w.getBounds());timer.fn();for(const w of [mascot,input,bubble]){assert.equal(w.topmost,true);assert.ok(w.raised>0);assert.equal(w.focused,false);}assert.equal(control.raised,undefined);assert.deepEqual(b.windows.map(w=>w.getBounds()),before);
+ input.hide();bubble.minimized=true;const counts=[input.raised,bubble.raised];timer.fn();assert.deepEqual([input.raised,bubble.raised],counts);assert.equal(input.visible,false);
+ mascot.topmost=false;mascot.emit('always-on-top-changed',{},false);assert.equal(mascot.topmost,true);mascot.topmost=false;mascot.emit('show');assert.equal(mascot.topmost,true);mascot.topmost=false;mascot.emit('restore');assert.equal(mascot.topmost,true);
+ await b.invoke('save',{...DEFAULTS,topmost:false});const raised=mascot.raised;timer.fn();mascot.emit('restore');assert.equal(mascot.raised,raised);assert.equal(mascot.topmost,false);
+ await b.invoke('save',{...DEFAULTS,topmost:true});b.app.emit('before-quit');assert.equal(timer.cleared,true);const end=mascot.raised;timer.fn();assert.equal(mascot.raised,end);
 });
