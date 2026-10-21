@@ -32,11 +32,20 @@
   const visible=areas.some(r=>b.x+b.width>r.x+40&&b.x<r.x+r.width-40&&b.y+30>r.y&&b.y<r.y+r.height-30);
   return visible?b:clampPosition(b,areas[0]);
  }
+ function restoreMascotBounds(position,initial,areas,previousAreas=[]){
+  if(!Number.isFinite(position.x)||!Number.isFinite(position.y))return initial;
+  const bounds={...initial,x:position.x,y:position.y};
+  const signature=items=>JSON.stringify(items.map(r=>[r.x,r.y,r.width,r.height]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]||a[2]-b[2]||a[3]-b[3]));
+  // Keep deliberate off-screen placement on the same monitor layout.
+  if(previousAreas.length&&signature(areas)===signature(previousAreas))return bounds;
+  const visible=areas.some(r=>bounds.x+bounds.width>r.x+40&&bounds.x<r.x+r.width-40&&bounds.y+bounds.height>r.y+40&&bounds.y<r.y+r.height-40);
+  return visible?bounds:initial;
+ }
  function normalizeAngle(value){return Math.round((((value+180)%360+360)%360-180)*10)/10;}
  function rotationFromDrag(base,dx,dy,roll=false){
   if(!Number.isFinite(dx)||!Number.isFinite(dy))return null;
   return {angleX:normalizeAngle(base.angleX+(roll?0:dy*.4)),angleY:normalizeAngle(base.angleY+(roll?0:dx*.4)),angleZ:normalizeAngle(base.angleZ+(roll?dx*.4:0))};
  }
- return {rotationFromDrag,TOP,BOTTOM,BASE_WIDTH,BASE_HEIGHT,mascotBounds,fitDistance,popupBounds,clampPosition,restoreInputBounds};
+ return {restoreMascotBounds,rotationFromDrag,TOP,BOTTOM,BASE_WIDTH,BASE_HEIGHT,mascotBounds,fitDistance,popupBounds,clampPosition,restoreInputBounds};
 });
 

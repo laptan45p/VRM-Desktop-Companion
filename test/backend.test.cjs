@@ -72,3 +72,8 @@ test('idle settings migrate, validate and persist',()=>{
 test('voice settings migrate disabled and persist with bounded synthesis options',()=>{
  assert.equal(cleanSettings({}).ttsEnabled,false);const s=cleanSettings({ttsEnabled:true,speakerPath:'/voice.speaker.safetensors',ttsEndpoint:'http://localhost:8088',ttsSpeed:99,ttsVolume:-1,ttsTimeout:9999,ttsCaption:'やさしく'});assert.equal(s.ttsSpeed,4);assert.equal(s.ttsVolume,0);assert.equal(s.ttsTimeout,900);const dir=fs.mkdtempSync(path.join(os.tmpdir(),'voice-settings-'));try{const a=new Store(dir);a.data.settings=s;a.save();const b=new Store(dir);b.load();assert.deepEqual(b.data.settings,s);}finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('window positions and monitor layouts migrate, validate and persist independently',()=>{
+ const s=cleanSettings({mascotX:-4000,mascotY:-2000,controlX:-1200,controlY:25,displayAreas:[{x:-1600,y:0,width:1600,height:900},{x:NaN,y:0,width:1,height:1},{x:0,y:0,width:-1,height:1}]});assert.equal(s.mascotX,-4000);assert.equal(s.controlY,25);assert.equal(s.displayAreas.length,1);assert.equal(cleanSettings({}).mascotX,null);assert.deepEqual(cleanSettings({}).displayAreas,[]);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'window-positions-'));try{const a=new Store(dir);a.data.settings=s;a.save();const b=new Store(dir);b.load();assert.deepEqual(b.data.settings,s);}finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

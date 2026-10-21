@@ -8,9 +8,9 @@ const reactions=new ReactionCounter();
 const {TouchResponder}=require('./touch-response.cjs');
 const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,screen,safeStorage}=require('electron');
 const fs=require('node:fs/promises'),path=require('node:path');
-const {mascotBounds,popupBounds,restoreInputBounds}=require('./layout.cjs');
+const {mascotBounds,popupBounds,restoreInputBounds,restoreMascotBounds}=require('./layout.cjs');
 const {Store,cleanSettings,listModels,chat,touchReply,isCloud,llmBase}=require('./backend.cjs');
-let store,keys,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null,voiceId=0,voiceAwaiting=null,voiceStatus='',wheelAnchor=null;
+let store,keys,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null,voiceId=0,voiceAwaiting=null,voiceStatus='',wheelAnchor=null,displayLayout=null;
 const touchResponses=new TouchResponder({generate:(s,h,r,signal)=>touchReply(s,h,r,signal,{apiKey:credentials(s),relationshipContext:relationship.context(relationship.current(store.data.relationships))}),publish:(text,reaction)=>{speak(text,{touch:true});broadcast({reaction});}});
 const voiceLane=new VoiceLane({publish:audio=>{
  if(audio.id!==voiceId)return;voiceAwaiting=audio.id;clearTimeout(speechTimer);voiceStatus='音声の再生準備中…';broadcast({voiceStatus});
@@ -39,12 +39,21 @@ function positionPopups(){
 
 }
 function inputAreas(){return screen.getAllDisplays().map(d=>d.workArea);}
+function capturePosition(window,prefix){
+ if(!window||window.isDestroyed())return;
+ const b=window.getNormalBounds?.()||window.getBounds();store.data.settings[prefix+'X']=b.x;store.data.settings[prefix+'Y']=b.y;
+}
+function captureDisplayAreas(){store.data.settings.displayAreas=(displayLayout||inputAreas()).map(r=>({...r}));}
 function rememberPosition(window,prefix){
- const b=window.getBounds();store.data.settings[prefix+'X']=b.x;store.data.settings[prefix+'Y']=b.y;
+ capturePosition(window,prefix);captureDisplayAreas();
  clearTimeout(inputSaveTimer);inputSaveTimer=setTimeout(()=>{inputSaveTimer=null;try{store.save();}catch(e){console.error('ウィンドウの位置を保存できません:',e.message);}},200);inputSaveTimer.unref?.();
 }
 function recoverInput(){
- for(const w of [input,bubble]){const b=w.getBounds(),next=restoreInputBounds({x:b.x,y:b.y},b,inputAreas());if(next.x!==b.x||next.y!==b.y)w.setBounds(next,false);}
+ const areas=inputAreas(),b=mascot.getBounds(),next=restoreMascotBounds({x:b.x,y:b.y},mascotBounds(store.data.settings.scale,screen.getPrimaryDisplay().workArea),areas,store.data.settings.displayAreas);
+ displayLayout=areas.map(r=>({...r}));
+ if(next.x!==b.x||next.y!==b.y)mascot.setBounds(next,false);
+ for(const w of [control,input,bubble]){const b=w.getNormalBounds?.()||w.getBounds(),next=restoreInputBounds({x:b.x,y:b.y},b,areas);if(next.x!==b.x||next.y!==b.y)w.setBounds(next,false);}
+ captureDisplayAreas();positionPopups();
 }
 function resizeMascot(reset=false,anchor=null){
  if(!mascot||mascot.isDestroyed())return;
@@ -103,9 +112,12 @@ if(gotLock)app.whenReady().then(async()=>{
  store.data.relationships=relationship.clean(store.data.relationships,store.data.settings.name);
  if(store.data.settings.modelPath&&!store.data.relationships.bindings.length)relationship.select(store.data.relationships,store.data.relationships.active,store.data.settings.modelPath,store.data.history);
  const webPreferences={preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,autoplayPolicy:'no-user-gesture-required'};
- control=new BrowserWindow({width:570,height:850,minWidth:480,minHeight:650,show:false,title:'VRM Desktop Companion — 設定・履歴',backgroundColor:'#f5f5f3',webPreferences});
- const r=screen.getPrimaryDisplay().workArea;
- mascot=new BrowserWindow({...mascotBounds(store.data.settings.scale,r),show:false,transparent:true,frame:false,resizable:false,hasShadow:false,alwaysOnTop:store.data.settings.topmost,skipTaskbar:true,backgroundColor:'#00000000',webPreferences});
+ const r=screen.getPrimaryDisplay().workArea,areas=inputAreas();displayLayout=areas.map(r=>({...r}));
+ const controlInitial={x:r.x+Math.round((r.width-570)/2),y:r.y+Math.round((r.height-850)/2),width:570,height:850};
+ const controlLocation=restoreInputBounds({x:store.data.settings.controlX,y:store.data.settings.controlY},controlInitial,areas);
+ control=new BrowserWindow({...controlLocation,minWidth:480,minHeight:650,show:false,title:'VRM Desktop Companion — 設定・履歴',backgroundColor:'#f5f5f3',webPreferences});
+ const mascotLocation=restoreMascotBounds({x:store.data.settings.mascotX,y:store.data.settings.mascotY},mascotBounds(store.data.settings.scale,r),areas,store.data.settings.displayAreas);
+ mascot=new BrowserWindow({...mascotLocation,show:false,transparent:true,frame:false,resizable:false,hasShadow:false,alwaysOnTop:store.data.settings.topmost,skipTaskbar:true,backgroundColor:'#00000000',webPreferences});
  const inputInitial=popupBounds(mascot.getBounds(),390,224,r,'input');
  const inputLocation=restoreInputBounds({x:store.data.settings.inputX,y:store.data.settings.inputY},inputInitial,inputAreas());
  input=new BrowserWindow({...inputLocation,minWidth:320,minHeight:190,show:false,resizable:false,autoHideMenuBar:true,title:'話しかける',alwaysOnTop:store.data.settings.topmost,skipTaskbar:true,backgroundColor:'#f7f5ee',webPreferences});
@@ -118,10 +130,11 @@ if(gotLock)app.whenReady().then(async()=>{
  await Promise.all([control.loadFile(path.join(__dirname,'index.html'),{query:{view:'control'}}),mascot.loadFile(path.join(__dirname,'index.html'),{query:{view:'mascot'}}),input.loadFile(path.join(__dirname,'index.html'),{query:{view:'input'}}),bubble.loadFile(path.join(__dirname,'index.html'),{query:{view:'bubble'}})]);
  for(const w of [control,input,bubble])w.on('close',e=>{if(!app.isQuitting){e.preventDefault();w.hide();}});
  mascot.on('close',e=>{if(!app.isQuitting){e.preventDefault();hideMascot();}});
+ control.on('move',()=>rememberPosition(control,'control'));
  input.on('move',()=>rememberPosition(input,'input'));
  bubble.on('move',()=>{rememberPosition(bubble,'bubble');positionPopups();});
- mascot.on('move',positionPopups);
- screen.on('display-metrics-changed',()=>{resizeMascot();recoverInput();});screen.on('display-removed',()=>{resizeMascot();recoverInput();});
+ mascot.on('move',()=>{rememberPosition(mascot,'mascot');positionPopups();});
+ screen.on('display-metrics-changed',()=>recoverInput());screen.on('display-removed',()=>recoverInput());
  tray=new Tray(nativeImage.createFromPath(path.join(__dirname,'tray.png')));tray.setToolTip('VRM Desktop Companion');
  tray.on('click',()=>tray.popUpContextMenu(menu()));tray.on('right-click',()=>tray.popUpContextMenu(menu()));
  if(!globalShortcut.register('CommandOrControl+Alt+M',()=>setPass(!pass)))startupError+=' Ctrl+Alt+Mを登録できませんでした。';
@@ -129,7 +142,10 @@ if(gotLock)app.whenReady().then(async()=>{
  resizeMascot();applyHit();mascot.showInactive();if(startupError)speak(startupError,{voice:false});
 });
 app.on('second-instance',()=>{if(input)showInput();});
-app.on('before-quit',()=>{app.isQuitting=true;cancelVoice(false);touchResponses.cancel();active?.abort();clearTimeout(speechTimer);if(inputSaveTimer){clearTimeout(inputSaveTimer);try{store.save();}catch{}}});
+app.on('before-quit',()=>{
+ app.isQuitting=true;cancelVoice(false);touchResponses.cancel();active?.abort();clearTimeout(speechTimer);clearTimeout(inputSaveTimer);inputSaveTimer=null;
+ if(store){for(const [w,prefix] of [[control,'control'],[mascot,'mascot'],[input,'input'],[bubble,'bubble']])capturePosition(w,prefix);captureDisplayAreas();try{store.save();}catch(e){console.error('終了時の位置を保存できません:',e.message);}}
+});
 app.on('will-quit',()=>globalShortcut.unregisterAll());app.on('window-all-closed',()=>app.quit());
 function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=>{if(!allWindows().some(w=>w.webContents===e.sender)||only&&e.sender!==only()?.webContents)throw new Error('不明なウィンドウです。');return fn(...args);}));}
 handle('state',()=>({...store.data,version:app.getVersion?.()||'',relationships:undefined,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus}));
@@ -137,7 +153,7 @@ handle('save',settings=>{
  if(active)throw new Error('生成を停止してから設定を変更してください。');
  const cleaned=cleanSettings(settings);if(isCloud(cleaned.provider))llmBase(cleaned);
  cancelVoice();touchResponses.cancel();clearTimeout(speechTimer);if(speech)armSpeechTimer();
- store.data.settings=cleanSettings({...settings,speakerPath:store.data.settings.speakerPath,modelPath:store.data.settings.modelPath,motionFolder:store.data.settings.motionFolder,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY,bubbleX:store.data.settings.bubbleX,bubbleY:store.data.settings.bubbleY});store.save();
+ store.data.settings=cleanSettings({...settings,speakerPath:store.data.settings.speakerPath,modelPath:store.data.settings.modelPath,motionFolder:store.data.settings.motionFolder,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY,bubbleX:store.data.settings.bubbleX,bubbleY:store.data.settings.bubbleY,mascotX:store.data.settings.mascotX,mascotY:store.data.settings.mascotY,controlX:store.data.settings.controlX,controlY:store.data.settings.controlY,displayAreas:store.data.settings.displayAreas});store.save();
  for(const w of [mascot,input,bubble])w.setAlwaysOnTop(store.data.settings.topmost);resizeMascot();broadcast();return store.data.settings;
 });
 handle('choose-speaker',async()=>{

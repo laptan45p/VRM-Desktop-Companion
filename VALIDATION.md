@@ -1,7 +1,10 @@
-# Validation — 0.1.23
+# Validation — 0.1.24
 
-127 tests passed after a fresh dependency install and renderer build:
+132 tests passed after a fresh dependency install and renderer build:
 
+- All four window positions survive settings saves and restart; startup retains the mascot-only display style.
+- Quit captures final positions synchronously without relying on pending move timers, and uses normal bounds for a maximized control window.
+- Monitor-layout persistence, legacy defaults, malformed bounds filtering, removed-display recovery and deliberate off-screen mascot placement on an unchanged layout.
 - OpenAI/OpenRouter model-list buttons show immediate progress, retain disabled status during unrelated updates, prevent duplicate requests and expose selectable results.
 - Model-list selection persists the chosen ID; missing-key errors, empty responses and stale results after provider changes have explicit UI handling.
 - Model-list status precedes the cloud settings block in the actual HTML so it is next to the request button.
@@ -128,3 +131,5 @@ Relationship language and TTS expressiveness are covered through request/state t
 OpenRouter requests are verified with mocked API responses. No user API key was available for a paid live request; model availability and actual output quality must be checked with the selected OpenRouter account.
 
 Ctrl-wheel is covered with renderer/IPC tests; physical mouse and touchpad behavior requires confirmation on the target Windows PC.
+
+Native Windows window placement and monitor reconnection still require verification on the target PC; automated coverage uses Electron window mocks and actual persisted Store data.

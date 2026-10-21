@@ -24,3 +24,12 @@ test('off-screen placement is preserved until an explicit position reset',()=>{
  const b=mascotBounds(1,area,previous);assert.deepEqual(b,previous);
  const reset=mascotBounds(1,area);assert.equal(reset.x+reset.width,area.width);assert.equal(reset.y+reset.height,area.height);
 });
+
+
+test('mascot startup preserves deliberate off-screen placement only on an unchanged monitor layout',()=>{
+ const {restoreMascotBounds}=require('../src/layout.cjs'),main={x:0,y:0,width:1920,height:1040},left={x:-1920,y:0,width:1920,height:1040},initial=mascotBounds(1,main);
+ const off={x:-6000,y:-3000};assert.deepEqual(restoreMascotBounds(off,initial,[main,left],[left,main]),{...initial,...off});
+ assert.deepEqual(restoreMascotBounds(off,initial,[main],[main,left]),initial);
+ const partial={x:-100,y:300};assert.deepEqual(restoreMascotBounds(partial,initial,[main],[main,left]),{...initial,...partial});
+ assert.deepEqual(restoreMascotBounds({x:null,y:null},initial,[main]),initial);
+});

@@ -4,7 +4,7 @@ const path = require('node:path');
 const DEFAULTS = {
   cloudMaxTokens: 1024, cloudReasoning: 'auto', cloudTemperature: false, compatibleTokenParam: 'max_tokens', provider: 'ollama', endpoint: 'http://127.0.0.1:11434', model: '',
   name: 'コンパニオン', persona: 'あなたはデスクトップに住む親しみやすい相棒です。日本語で自然に会話してください。返答は基本的に短く、相手の話をよく聞いてください。',
-  temperature: 0.7, historyTurns: 12, ttsEnabled: false, ttsEndpoint: 'http://127.0.0.1:8088', speakerPath: '', ttsCaption: '', ttsSpeed: 1, ttsVolume: .8, ttsTimeout: 300, modelPath: '', motionFolder: '', greetingMotion: 'VRMA_02.vrma', randomMotion: true, motionInterval: 60, idleMotion: '', idleMode: 'loop', idleSpeed: 1, idlePose: 50, scale: 1, angle: 0, angleX: 0, angleY: 0, angleZ: 0, topmost: true, inputX: null, inputY: null, lipSync: true, softIdle: true, motionStrength: 0.65, touchEnabled: true, clothDrag: true, handDrag: true, clothReach: .18, clothAngle: 80, touchZoneScale: 1, bubbleX: null, bubbleY: null, bubbleFont: 'Yu Gothic UI', bubbleFontSize: 13,
+  temperature: 0.7, historyTurns: 12, ttsEnabled: false, ttsEndpoint: 'http://127.0.0.1:8088', speakerPath: '', ttsCaption: '', ttsSpeed: 1, ttsVolume: .8, ttsTimeout: 300, modelPath: '', motionFolder: '', greetingMotion: 'VRMA_02.vrma', randomMotion: true, motionInterval: 60, idleMotion: '', idleMode: 'loop', idleSpeed: 1, idlePose: 50, scale: 1, angle: 0, angleX: 0, angleY: 0, angleZ: 0, topmost: true, inputX: null, inputY: null, mascotX: null, mascotY: null, controlX: null, controlY: null, displayAreas: [], lipSync: true, softIdle: true, motionStrength: 0.65, touchEnabled: true, clothDrag: true, handDrag: true, clothReach: .18, clothAngle: 80, touchZoneScale: 1, bubbleX: null, bubbleY: null, bubbleFont: 'Yu Gothic UI', bubbleFontSize: 13,
 };
 function cleanSettings(input = {}) {
   const s = { ...DEFAULTS };
@@ -15,7 +15,8 @@ function cleanSettings(input = {}) {
   for (const [k,min,max] of [['temperature',0,2],['historyTurns',1,40],['scale',0.5,10.0],['angle',-180,180],['angleX',-180,180],['angleY',-180,180],['angleZ',-180,180],['motionStrength',0,1],['touchZoneScale',.75,1.4],['bubbleFontSize',8,72],['clothReach',.02,.5],['clothAngle',10,120],['motionInterval',10,3600],['idleSpeed',.1,3],['idlePose',0,100],['ttsSpeed',.25,4],['ttsVolume',0,1],['ttsTimeout',30,900],['cloudMaxTokens',128,8192]]) {
     if (Number.isFinite(Number(input[k]))) s[k] = Math.max(min, Math.min(max, Number(input[k])));
   }
-  for(const k of ['inputX','inputY','bubbleX','bubbleY'])if(typeof input[k]==='number'&&Number.isFinite(input[k]))s[k]=Math.round(Math.max(-100000,Math.min(100000,input[k])));
+  for(const k of ['inputX','inputY','bubbleX','bubbleY','mascotX','mascotY','controlX','controlY'])if(typeof input[k]==='number'&&Number.isFinite(input[k]))s[k]=Math.round(Math.max(-100000,Math.min(100000,input[k])));
+  if(Array.isArray(input.displayAreas))s.displayAreas=input.displayAreas.slice(0,16).filter(r=>r&&['x','y','width','height'].every(k=>typeof r[k]==='number'&&Number.isFinite(r[k]))&&r.width>0&&r.height>0).map(r=>({x:Math.round(Math.max(-100000,Math.min(100000,r.x))),y:Math.round(Math.max(-100000,Math.min(100000,r.y))),width:Math.round(Math.max(1,Math.min(100000,r.width))),height:Math.round(Math.max(1,Math.min(100000,r.height)))}));
   if(!Object.prototype.hasOwnProperty.call(input,'angleY'))s.angleY=s.angle;
   s.angle=s.angleY; // Retain the legacy Y axis alias.
   if(['loop','pose'].includes(input.idleMode))s.idleMode=input.idleMode;

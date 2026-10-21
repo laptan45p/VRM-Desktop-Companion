@@ -1,20 +1,20 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{EventEmitter}=require('node:events');
 const {cleanSettings,DEFAULTS}=require('../src/backend.cjs');const layout=require('../src/layout.cjs');
 async function boot(saved={},touchGenerate=async()=>'LLMの反応',motionFiles=null,tts=null,llm=null){
- const area={x:-1600,y:0,width:1600,height:900},handlers=new Map(),windows=[],screen=new EventEmitter(),app=new EventEmitter(),menus=[],trays=[],timers=[];
+ const area={x:-1600,y:0,width:1600,height:900},handlers=new Map(),windows=[],screen=new EventEmitter(),app=new EventEmitter(),menus=[],trays=[],timers=[];let savedData=null;
  Object.assign(app,{requestSingleInstanceLock:()=>true,whenReady:()=>Promise.resolve(),getPath:()=>'/test-data',setAppUserModelId:()=>{},quit:()=>{}});
  screen.getPrimaryDisplay=()=>({workArea:area});screen.getDisplayMatching=()=>({workArea:area});screen.getAllDisplays=()=>[{workArea:area}];
  class Window extends EventEmitter{
   constructor(options){super();this.options=options;this.visible=options.show!==false;this.events=[];this.bounds={x:options.x||0,y:options.y||0,width:options.width,height:options.height};this.webContents=new EventEmitter();Object.assign(this.webContents,{setWindowOpenHandler:()=>{},send:(event,value)=>this.events.push(value),session:{webRequest:{onBeforeRequest:()=>{}},setPermissionRequestHandler:()=>{}}});windows.push(this);}
   async loadFile(){}getBounds(){return {...this.bounds};}setBounds(b){this.bounds={...b};}isDestroyed(){return false;}setAlwaysOnTop(v){this.topmost=v;}setIgnoreMouseEvents(v){this.ignore=v;}show(){this.visible=true;}showInactive(){this.visible=true;}hide(){this.visible=false;}focus(){this.focused=true;}
  }
- class Store{constructor(){this.file='/test-data/companion.json';this.data={settings:{...DEFAULTS,scale:.5,...saved},history:[]};}load(){}save(){}}
+ class Store{constructor(){this.file='/test-data/companion.json';this.data={settings:{...DEFAULTS,scale:.5,...saved},history:[]};}load(){}save(){savedData=structuredClone(this.data);}}
  const electron={app,BrowserWindow:Window,ipcMain:{handle:(k,v)=>handlers.set(k,v)},dialog:{showOpenDialog:async()=>({canceled:false,filePaths:['/motions']})},Menu:{buildFromTemplate:v=>{const m={items:v,popup:()=>{m.opened=true;}};menus.push(m);return m;}},Tray:class extends EventEmitter{constructor(){super();trays.push(this);}setToolTip(){}popUpContextMenu(m){this.menu=m;}},nativeImage:{createFromPath:()=>({})},globalShortcut:{register:()=>true,unregisterAll:()=>{}},screen};
  const context={require:p=>p==='electron'?electron:p==='./api-keys.cjs'?{ApiKeys:class{constructor(){this.entries=new Map();}load(){}available(){return true;}scope(s){return s.provider+' '+require('../src/backend.cjs').llmBase(s);}has(s){return this.entries.has(this.scope(s));}get(s){return this.entries.get(this.scope(s))||'';}set(s,key){this.entries.set(this.scope(s),key);}delete(s){this.entries.delete(this.scope(s));}}}:p==='./tts.cjs'?(tts||require('../src/tts.cjs')):p==='./vrma-files.cjs'?(motionFiles||require('../src/vrma-files.cjs')):p==='./backend.cjs'?{Store,cleanSettings,isCloud:require('../src/backend.cjs').isCloud,llmBase:require('../src/backend.cjs').llmBase,chat:llm?.chat|| (async(_s,_h,t)=>'返事：'+t),listModels:llm?.listModels||(async()=>[]),touchReply:touchGenerate}:p==='./relationship.cjs'?require('../src/relationship.cjs'):p==='./layout.cjs'?layout:p==='./interaction.cjs'?require('../src/interaction.cjs'):p==='./touch-response.cjs'?{TouchResponder:class extends require('../src/touch-response.cjs').TouchResponder{constructor(options){super({...options,setTimer:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimer:()=>{}});}}}:require(p),__dirname:path.resolve(__dirname,'../src'),structuredClone,AbortController,console,setTimeout:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimeout:()=>{}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8'),context);await new Promise(r=>setImmediate(r));
  const invoke=(channel,...args)=>handlers.get(channel)({sender:windows[0].webContents},...args);
  const as=(i,channel,...args)=>handlers.get(channel)({sender:windows[i].webContents},...args);
- return {area,handlers,windows,screen,menus,trays,timers,invoke,as};
+ return {area,handlers,windows,screen,app,menus,trays,timers,invoke,as,saved:()=>savedData};
 }
 test('startup shows only the mascot; scale is independent of the screen and reset is explicit',async()=>{
  const {area,windows,screen,invoke}=await boot();assert.equal(windows.length,4);const [control,mascot,input,bubble]=windows;
@@ -164,4 +164,26 @@ test('wheel zoom is mascot-only, bounded, relative to latest scale, persisted an
  for(let i=0;i<20;i++)await as(1,'zoom',300);const saved=(await invoke('state')).data.settings;assert.equal(saved.scale,.5);assert.deepEqual(windows.slice(2).map(w=>w.getBounds()),original.slice(2));
  const b=windows[1].getBounds();assert.equal(b.x+b.width/2,original[1].x+original[1].width/2);assert.equal(b.y+b.height,original[1].y+original[1].height);
  const restart=await boot(saved);assert.equal((await restart.invoke('state')).data.settings.scale,.5);await invoke('action','pass');await as(1,'zoom',-300);assert.equal((await invoke('state')).data.settings.scale,.5);
+});
+
+test('all four window positions survive settings saves and restart, including an off-screen mascot',async()=>{
+ const b=await boot(),positions=[{x:-1300,y:25},{x:-4000,y:-2000},{x:-1100,y:300},{x:-700,y:450}],prefixes=['control','mascot','input','bubble'];
+ b.windows.forEach((w,i)=>{w.setBounds({...w.getBounds(),...positions[i]});w.emit('move');});
+ await b.invoke('save',{...DEFAULTS,controlX:0,mascotX:0,displayAreas:[]});const s=(await b.invoke('state')).data.settings;
+ for(let i=0;i<4;i++){assert.equal(s[prefixes[i]+'X'],positions[i].x);assert.equal(s[prefixes[i]+'Y'],positions[i].y);}
+ const next=await boot(s);for(let i=0;i<4;i++){assert.equal(next.windows[i].bounds.x,positions[i].x);assert.equal(next.windows[i].bounds.y,positions[i].y);}
+ assert.equal(next.windows[0].visible,false);assert.equal(next.windows[2].visible,false);assert.equal(next.windows[3].visible,false);assert.equal(next.windows[1].visible,true);
+});
+test('quit captures the latest positions synchronously even without pending move timers',async()=>{
+ const b=await boot();b.windows[0].getNormalBounds=()=>({x:-1200,y:20,width:570,height:850});b.windows[0].setBounds({x:0,y:0,width:1600,height:900});
+ b.windows[1].setBounds({...b.windows[1].getBounds(),x:-1500,y:-70});b.windows[2].setBounds({...b.windows[2].getBounds(),x:-900,y:300});b.windows[3].setBounds({...b.windows[3].getBounds(),x:-500,y:400});
+ b.app.emit('before-quit');const s=b.saved().settings;assert.equal(s.controlX,-1200);assert.equal(s.controlY,20);assert.equal(s.mascotX,-1500);assert.equal(s.mascotY,-70);assert.equal(s.inputX,-900);assert.equal(s.bubbleY,400);assert.equal(s.displayAreas.length,1);
+ const next=await boot(s);assert.equal(next.windows[1].bounds.x,-1500);assert.equal(next.windows[0].bounds.x,-1200);
+});
+test('removed displays recover inaccessible windows while retaining partially off-screen mascot positions',async()=>{
+ const previous=[{x:-4000,y:0,width:2000,height:1200}],b=await boot({mascotX:-3500,mascotY:100,controlX:-3500,controlY:100,inputX:-3500,inputY:100,bubbleX:-3500,bubbleY:100,displayAreas:previous});
+ for(const w of b.windows)assert.ok(w.bounds.x>=b.area.x);
+ b.windows[1].setBounds({...b.windows[1].getBounds(),x:-1700,y:-50});b.windows[1].emit('move');b.area.width=1400;b.screen.emit('display-metrics-changed');assert.equal(b.windows[1].bounds.x,-1700);assert.equal(b.windows[1].bounds.y,-50);
+ // The OS may move another window before delivering the monitor-removal event.
+ b.area.x=0;b.windows[0].setBounds({...b.windows[0].getBounds(),x:20,y:20});b.windows[0].emit('move');b.screen.emit('display-removed');assert.ok(b.windows[1].bounds.x>=0);
 });
