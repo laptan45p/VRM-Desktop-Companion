@@ -4,3 +4,6 @@ dist/
 *.log
 artifacts/
 __pycache__/
+
+Irodori-TTS-Server/
+tts-logs/

@@ -18,6 +18,14 @@ def application(target):
     for name in DOCS:
         shutil.copy2(ROOT / name, target / name)
 
+def tts_helpers(target):
+    target.mkdir(parents=True, exist_ok=True)
+    for name in ['install_irodori_tts.bat', 'start_irodori_tts.bat']:
+        # cmd.exe wrappers use CRLF in every release archive.
+        content = (ROOT / name).read_text(encoding='utf-8').replace('\r\n', '\n')
+        (target / name).write_bytes(content.replace('\n', '\r\n').encode('utf-8'))
+    shutil.copytree(ROOT / 'tts-tools', target / 'tts-tools', dirs_exist_ok=True)
+
 def archive(folder, dest, prefix=''):
     with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         for file in sorted(folder.rglob('*')):
@@ -101,9 +109,11 @@ def main():
         application(old)
         for name in ['README.md', 'UPDATE.md', 'VALIDATION.md', 'THIRD_PARTY_NOTICES.txt', 'TTS_SETUP.md']:
             shutil.copy2(ROOT / name, portable / name)
+        tts_helpers(portable)
         archive(portable, out / f'{APP}-v{version}-Windows-x64.zip', APP)
         patch = stage / 'update'
         application(patch / 'update-files/resources/app')
+        tts_helpers(patch)
         (patch / 'apply_update.bat').write_bytes(installer(version).replace('\n', '\r\n').encode('utf-8'))
         (patch / 'README-update.txt').write_text('旧版をトレイから終了→ZIPをすべて展開→中身をexeのフォルダーへコピー→apply_update.batを実行→従来のexeで起動。設定・履歴は引き継ぎます。\n', encoding='utf-8')
         archive(patch, out / f'{APP}-v{version}-Update.zip')
@@ -113,10 +123,19 @@ def main():
                 shutil.copytree(ROOT / name, source / name, ignore=shutil.ignore_patterns('__pycache__'))
         for name in DOCS + ['package-lock.json', '.gitignore', 'start.bat', 'build_windows.bat']:
             shutil.copy2(ROOT / name, source / name)
+        tts_helpers(source)
         archive(source, out / f'{APP}-v{version}-Source.zip', APP)
     assets = sorted(out.glob(f'{APP}-v{version}-*.zip'))
     (out / 'SHA256SUMS.txt').write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n' for p in assets), encoding='utf-8')
     (out / 'notes.md').write_text(f'''## Windows版 {version}
+
+## TTSサーバー用batを同梱（0.1.25）
+
+初回は **install_irodori_tts.bat**、普段は **start_irodori_tts.bat** をダブルクリックしてください。同じ場所の `tts-tools` フォルダーも必要です。インストール用はGit・uvの準備、公式リポジトリのクローン、Python 3.10とCUDA版依存関係の導入を行います。
+
+起動用は **v4-Large-Quantized/int8-weight-only・bf16** を指定し、`127.0.0.1:8088` で待ち受けます。初回はモデルとコーデックの取得があるため、Application startup complete を待ってからマスコットで「声を試す」を実行してください。
+
+Windows版・更新版・ソース版すべてに同梱します。更新ZIPは従来どおり中身をexeのある場所へコピーしてください。既存のサーバー設定を上書きせず、日時付きログを `tts-logs` に保存します。詳細はTTS_SETUP.mdをご覧ください。実際のWinGet導入・GPU音声生成はこの環境では未検証です。
 
 ## 前回のウィンドウ位置を復元（0.1.24）
 
@@ -222,7 +241,7 @@ Ctrl＋ドラッグで上下に動かすとX軸、左右に動かすとY軸で�
 回転中心には重心の目安として腰ボーンの位置を使い、腰がないモデルはモデルの中央を使います。VRMには質量情報がないため、物理的な重心の厳密な計算ではありません。カメラもこの中心を基準にするため、回転で表示位置が大きくずれないようにしています。読み込み時の範囲を保存して回転中の計算負荷を抑えています。手を大きく伸ばしたポーズなどは基準範囲からはみ出す場合があります。旧版の「向き」はY軸へ引き継ぎます。
 
 - **Windows-x64.zip**：実行環境込みの完全版。展開してexeで起動します。
-- **Update.zip**：0.1.0〜0.1.23からの更新。旧版を完全終了し、中身をexeの場所へ置いてapply_update.batを実行します。
+- **Update.zip**：0.1.0〜0.1.24からの更新。旧版を完全終了し、中身をexeの場所へ置いてapply_update.batを実行します。
 - **Source.zip**：ビルド済み描画コードを含むソース一式。
 - SHA256SUMS.txt：ZIPの照合用ハッシュ。
 

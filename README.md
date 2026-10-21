@@ -22,18 +22,24 @@
 
 更新後からキャラクターと設定画面の位置も記録します。初回は位置を調整してアプリを終了し、もう一度起動してください。旧版の会話入力・吹き出しの保存位置は引き継ぎます。
 
+## TTSサーバーをbatで導入（0.1.25）
+
+同梱の **install_irodori_tts.bat** で公式リポジトリのクローン・Python 3.10とCUDA版依存関係の導入を行い、**start_irodori_tts.bat** で起動できます。Git・uvがなければWinGetで導入します。`tts-tools` フォルダーも一緒に置いてください。
+
+起動モデルは **v4-Large-Quantized/int8-weight-only**、計算精度はbf16、接続先は `http://127.0.0.1:8088` です。初回のモデル取得が終わるまで待ってから、マスコット側でSpeaker Embeddingを選択してください。手順・エラー時の対処は **TTS_SETUP.md** をご覧ください。
+
 ## Windows版の起動と更新
 
 初回は実行ファイル入りのWindows版ZIPをすべて展開し、`VRM-Desktop-Companion.exe` を起動してください。Node.jsは不要です。
 
-0.1.0〜0.1.23から差分更新する場合：
+0.1.0〜0.1.24から差分更新する場合：
 
 1. トレイメニューからアプリを完全に終了します。
 2. 更新ZIPを展開し、中身の `apply_update.bat` と `update-files` などを、exeのあるフォルダーへ置きます。
 3. `apply_update.bat` を実行します。
 4. 従来のexeから起動します。
 
-元ファイルは `backup-before-v0.1.24` に保存します。会話履歴、名前、性格、LLM設定、VRMのパスは引き継ぎます。戻す場合はアプリを終了し、バックアップ内のappフォルダーをresources/appへ戻してください。app.asarがあればresourcesへ戻します。
+元ファイルは `backup-before-v0.1.25` に保存します。会話履歴、名前、性格、LLM設定、VRMのパスは引き継ぎます。戻す場合はアプリを終了し、バックアップ内のappフォルダーをresources/appへ戻してください。app.asarがあればresourcesへ戻します。
 
 ## OpenRouterで接続（0.1.20）
 

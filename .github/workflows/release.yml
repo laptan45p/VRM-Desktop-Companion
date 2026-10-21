@@ -21,6 +21,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Check beginner TTS scripts
+        shell: powershell
+        run: ./test/irodori-setup.Tests.ps1
       - run: npm ci
       - run: npm run build
       - run: npm test
@@ -47,3 +50,4 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Asset upload failed; release remains a draft' }
           gh release edit $tag --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Could not publish release' }
+

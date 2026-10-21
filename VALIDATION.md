@@ -1,7 +1,9 @@
-# Validation — 0.1.24
+# Validation — 0.1.25
 
-132 tests passed after a fresh dependency install and renderer build:
+133 tests passed after a fresh dependency install and renderer build:
 
+- Release archive smoke test checks both TTS wrappers and the UTF-8 BOM PowerShell helper in portable/update/source roots, CRLF wrappers and absence of installed TTS environments/logs.
+- Windows PowerShell helper smoke tests cover quoted paths with spaces/Japanese, clone and CUDA/Python sync arguments, dedicated environment/model, reinstall settings preservation, foreign-repository rejection, loopback launch, local-checkpoint override, occupied ports and sync failure handling.
 - All four window positions survive settings saves and restart; startup retains the mascot-only display style.
 - Quit captures final positions synchronously without relying on pending move timers, and uses normal bounds for a maximized control window.
 - Monitor-layout persistence, legacy defaults, malformed bounds filtering, removed-display recovery and deliberate off-screen mascot placement on an unchanged layout.
@@ -133,3 +135,5 @@ OpenRouter requests are verified with mocked API responses. No user API key was 
 Ctrl-wheel is covered with renderer/IPC tests; physical mouse and touchpad behavior requires confirmation on the target Windows PC.
 
 Native Windows window placement and monitor reconnection still require verification on the target PC; automated coverage uses Electron window mocks and actual persisted Store data.
+
+The TTS helper Windows smoke tests replace Git/uv/GPU/network operations with fixtures. Actual WinGet installation, dependency downloads, GPU inference and the user Speaker Embedding still require validation on the target Windows PC.

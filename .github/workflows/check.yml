@@ -17,3 +17,11 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+
+  windows-tts-helpers:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check beginner TTS scripts without downloads or GPU inference
+        shell: powershell
+        run: ./test/irodori-setup.Tests.ps1
