@@ -18,14 +18,14 @@ let motionNames=[];
 function setMotionOptions(names,selected,idleSelected){motionNames=names;const idle=$('idleMotion');idle.replaceChildren();idle.add(new Option('標準の待機動作',''));for(const name of names)idle.add(new Option(name,name));if(idleSelected&&!names.includes(idleSelected))idle.add(new Option(idleSelected+'（未読み込み・標準動作を使用）',idleSelected));idle.value=idleSelected||'';const el=$('greetingMotion');el.replaceChildren();for(const name of names)el.add(new Option(name,name));if(!names.includes(selected))el.add(new Option(selected||'VRMA_02.vrma',selected||'VRMA_02.vrma'));el.value=selected||'VRMA_02.vrma';}
 async function refreshMotionOptions(){try{const names=await call(api.motionList());setMotionOptions(names,dirty?$('greetingMotion').value:state.settings.greetingMotion,dirty?$('idleMotion').value:state.settings.idleMotion);}catch(e){status('motionStatus',e.message,true);}}
 let keyRequest=0,keyAvailable=true,keySaved=false;
-const cloudProvider=provider=>provider==='openai'||provider==='compatible';
+const cloudProvider=provider=>provider==='openai'||provider==='openrouter'||provider==='compatible';
 async function refreshKeyStatus(){
  const serial=++keyRequest;if(!cloudProvider($('provider').value))return;
  status('keyStatus','確認中…');
  try{const result=await call(api.keyStatus(settingsFromForm()));if(serial!==keyRequest)return;keyAvailable=result.available;keySaved=result.saved;status('keyStatus',result.saved?'この接続先に登録済み（キーは表示しません）':result.available?'この接続先のAPIキーは未登録です。':'OSの暗号化機能を利用できません。',!result.available);$('saveKey').disabled=busy||!result.available;$('deleteKey').disabled=busy||!result.saved;}
  catch(e){if(serial===keyRequest)status('keyStatus',e.message,true);}
 }
-function updateProviderUI(){const provider=$('provider').value,cloud=cloudProvider(provider);$('cloudSettings').hidden=!cloud;$('endpoint').readOnly=provider==='openai';$('tokenParamLabel').hidden=provider!=='compatible';$('connectionBadge').textContent=cloud?'クラウドLLM':'ローカル接続';if(cloud)refreshKeyStatus();else{keyRequest++;$('apiKey').value='';}}
+function updateProviderUI(){const provider=$('provider').value,cloud=cloudProvider(provider);$('cloudSettings').hidden=!cloud;$('endpoint').readOnly=provider==='openai'||provider==='openrouter';$('openrouterHelp').hidden=provider!=='openrouter';$('model').placeholder=provider==='openrouter'?'例：anthropic/claude-haiku-5.5':'モデルIDを選択・直接入力';$('tokenParamLabel').hidden=provider!=='compatible';$('connectionBadge').textContent=cloud?'クラウドLLM':'ローカル接続';if(cloud)refreshKeyStatus();else{keyRequest++;$('apiKey').value='';}}
 function setModels(models,selected){$('modelOptions').replaceChildren();for(const m of models)$('modelOptions').append(new Option(m,m));$('model').value=selected||'';}
 function renderHistory(){
  const area=$('history');area.replaceChildren();
@@ -54,7 +54,7 @@ async function initControl(){
  const tabs=selectControlTab;
  $('chatTab').onclick=()=>tabs('chat');$('settingsTab').onclick=()=>tabs('settings');
  $('settingsForm').oninput=e=>{if(['relationshipProfile','relationshipName','romanceEnabled'].includes(e?.target?.id))return;dirty=true;};
- $('provider').onchange=()=>{$('endpoint').value={ollama:'http://127.0.0.1:11434',lmstudio:'http://127.0.0.1:1234',openai:'https://api.openai.com/v1',compatible:''}[$('provider').value];$('apiKey').value='';setModels([],$('provider').value==='openai'?'gpt-6-luna':'');dirty=true;updateProviderUI();};
+ $('provider').onchange=()=>{$('endpoint').value={ollama:'http://127.0.0.1:11434',lmstudio:'http://127.0.0.1:1234',openai:'https://api.openai.com/v1',openrouter:'https://openrouter.ai/api/v1',compatible:''}[$('provider').value];$('apiKey').value='';setModels([],$('provider').value==='openai'?'gpt-6-luna':'');dirty=true;updateProviderUI();};
  $('endpoint').oninput=()=>{dirty=true;$('apiKey').value='';refreshKeyStatus();};
  $('saveKey').onclick=wrap(async()=>{const key=$('apiKey').value;$('apiKey').value='';await call(api.saveKey(settingsFromForm(),key));await refreshKeyStatus();},'keyStatus');
  $('deleteKey').onclick=wrap(async()=>{await call(api.deleteKey(settingsFromForm()));$('apiKey').value='';await refreshKeyStatus();},'keyStatus');

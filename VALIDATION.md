@@ -1,7 +1,10 @@
-# Validation — 0.1.19
+# Validation — 0.1.20
 
-117 tests passed after a fresh dependency install and renderer build:
+122 tests passed after a fresh dependency install and renderer build:
 
+- OpenRouter fixed endpoint and independent key scope, text model discovery, manual model IDs, max_tokens and nested reasoning settings.
+- OpenRouter successful chat/touch requests, relationship context, HTTP 200/402/429/503 error redaction and no automatic retries.
+- OpenRouter settings preset, help visibility, API-key registration/clearing, model save and main-process integration without key leakage.
 - Relationship stages, cooldowns, daily caps, clock rollback, mood expiry, anger penalties and romance opt-out.
 - Application-controlled confession acceptance/rejection, retry cooldown, no automatic romance, quoted-text exclusion and pre-award eligibility.
 - Per-character history/profile persistence, outfit bindings, legacy migration and malformed data bounds.
@@ -114,3 +117,5 @@ Native Windows visual interaction has not been verified in this environment.
 - Live cloud requests/billing, real account/model availability and native Windows DPAPI integration were not tested in this environment.
 
 Relationship language and TTS expressiveness are covered through request/state tests; live conversation quality, actual Irodori audio, and user VRM expressions still require testing on the target Windows PC.
+
+OpenRouter requests are verified with mocked API responses. No user API key was available for a paid live request; model availability and actual output quality must be checked with the selected OpenRouter account.

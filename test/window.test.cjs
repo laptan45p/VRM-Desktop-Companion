@@ -147,3 +147,11 @@ test('confession fallback works without an LLM and opt-out preserves friendship'
  const {invoke}=await boot();const reply=await invoke('confess');assert.equal(reply.ok,true);assert.match(reply.data,/もう少し/);assert.equal((await invoke('state')).data.relationship.lovers,false);
  await invoke('relationship','romance',false);assert.match((await invoke('confess')).data,/友達/);assert.equal((await invoke('state')).data.relationship.romanceEnabled,false);
 });
+
+test('OpenRouter keys and provider reach models, normal conversation and touch without renderer leakage',async()=>{
+ const calls=[],llm={chat:async(s,_h,_t,_signal,o)=>{calls.push(['chat',s.provider,o.apiKey]);return '返事';},listModels:async(s,o)=>{calls.push(['models',s.provider,o.apiKey]);return ['anthropic/claude-haiku-5.5'];}},touch=async(s,_h,_r,_signal,o)=>{calls.push(['touch',s.provider,o.apiKey]);return 'えへへ';};
+ const b=await boot({},touch,null,null,llm),s={...DEFAULTS,provider:'openrouter',endpoint:'https://openrouter.ai/api/v1',model:'anthropic/claude-haiku-5.5'};
+ assert.equal((await b.invoke('key-save',s,'router-secret')).ok,true);assert.equal((await b.invoke('save',s)).ok,true);await b.invoke('models',s);assert.equal((await b.invoke('chat','こんにちは')).ok,true);await b.as(1,'touch','head','stroke');await b.timers.at(-1).fn();
+ assert.deepEqual(calls,[['models','openrouter','router-secret'],['chat','openrouter','router-secret'],['touch','openrouter','router-secret']]);for(const w of b.windows)assert.ok(!JSON.stringify(w.events).includes('router-secret'));
+ assert.equal((await b.invoke('key-status',{...s,provider:'compatible'})).data.saved,false);await b.invoke('key-delete',s);assert.equal((await b.invoke('key-status',s)).data.saved,false);
+});

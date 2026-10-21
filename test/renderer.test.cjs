@@ -141,3 +141,10 @@ test('relationship settings show state and send profile, romance and confession 
  await node('confess').onclick();assert.ok(calls.some(c=>c[0]==='confess'));node('romanceEnabled').checked=false;await node('romanceEnabled').onchange();assert.equal(node('confess').disabled,true);
  notify({busy:true});assert.equal(node('relationshipProfile').disabled,true);assert.equal(node('createRelationship').disabled,true);
 });
+
+test('OpenRouter preset fills the fixed endpoint, explains its key, and saves manual model IDs',async()=>{
+ const {node,calls}=await boot('control');node('provider').value='openrouter';node('provider').onchange();assert.equal(node('endpoint').value,'https://openrouter.ai/api/v1');assert.equal(node('endpoint').readOnly,true);assert.equal(node('cloudSettings').hidden,false);assert.equal(node('openrouterHelp').hidden,false);assert.equal(node('tokenParamLabel').hidden,true);
+ node('model').value='anthropic/claude-haiku-5.5';node('apiKey').value='router-secret';await node('saveKey').onclick();assert.equal(node('apiKey').value,'');assert.ok(calls.some(c=>c[0]==='saveKey'&&c[1]==='openrouter'&&c[2]==='https://openrouter.ai/api/v1'));
+ await node('settingsForm').onsubmit({preventDefault(){}});const saved=calls.find(c=>c[0]==='save')[1];assert.equal(saved.provider,'openrouter');assert.equal(saved.model,'anthropic/claude-haiku-5.5');assert.ok(!JSON.stringify(saved).includes('router-secret'));
+ node('provider').value='compatible';node('provider').onchange();assert.equal(node('openrouterHelp').hidden,true);assert.equal(node('endpoint').readOnly,false);
+});

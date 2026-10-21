@@ -38,3 +38,30 @@ test('key vault refuses plaintext fallback, unsafe key values and unreadable OS 
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'api-keys-'));try{for(const safe of [{isEncryptionAvailable:()=>false},{isEncryptionAvailable:()=>true,getSelectedStorageBackend:()=>'basic_text'}])assert.throws(()=>new ApiKeys(dir,safe).set(openai,'test-secret-key'),/暗号化/);const vault=new ApiKeys(dir,safeStorage());for(const key of ['','key\nvalue','key value','キー'])assert.throws(()=>vault.set(openai,key),/確認/);vault.set(openai,'test-secret-key');const different=new ApiKeys(dir,safeStorage());different.load();assert.throws(()=>different.get(openai),/読み出せません/);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+const openrouter={...DEFAULTS,provider:'openrouter',endpoint:'https://openrouter.ai/api/v1',model:'anthropic/claude-haiku-5.5'};
+test('OpenRouter preset pins its base URL, preserves explicit model IDs and isolates keys',()=>{
+ const cleaned=cleanSettings({provider:'openrouter',endpoint:'https://other.example/v1',model:openrouter.model});assert.equal(cleaned.endpoint,openrouter.endpoint);assert.equal(cleaned.model,openrouter.model);assert.equal(cleanSettings({provider:'openrouter'}).model,'');assert.equal(llmBase(openrouter),openrouter.endpoint);
+ for(const endpoint of ['http://openrouter.ai/api/v1','https://other.example/api/v1','https://openrouter.ai/api/v1/chat/completions','https://user:key@openrouter.ai/api/v1','https://openrouter.ai/api/v1?key=secret'])assert.throws(()=>llmBase({...openrouter,endpoint}));
+ assert.notEqual(scope(openrouter),scope({...openrouter,provider:'compatible'}));assert.notEqual(scope(openrouter),scope(openai));
+});
+test('OpenRouter lists text models and sends chat/touch context with the correct reasoning schema',async()=>{
+ const bodies=[];await fakeFetch(async(url,o)=>{
+  assert.equal(o.headers.Authorization,'Bearer router-secret');
+  if(url.endsWith('/models'))return json({data:[{id:openrouter.model,architecture:{input_modalities:['text','image'],output_modalities:['text']}},{id:'image-only',architecture:{output_modalities:['image']}},{id:'audio-only',architecture:{input_modalities:['audio'],output_modalities:['text']}},{id:'manual-id'}]});
+  assert.equal(url,openrouter.endpoint+'/chat/completions');bodies.push(JSON.parse(o.body));return json({choices:[{message:{content:'こんにちは',reasoning:'internal reasoning'}}]});
+ },async()=>{
+  assert.deepEqual(await listModels(openrouter,{apiKey:'router-secret'}),[openrouter.model,'manual-id']);
+  await chat({...openrouter,compatibleTokenParam:'max_completion_tokens'},[],'こんにちは',undefined,{apiKey:'router-secret',systemExtra:'親密さ：信頼'});
+  assert.equal(bodies[0].max_tokens,1024);assert.equal(bodies[0].max_completion_tokens,undefined);assert.equal(bodies[0].reasoning,undefined);assert.equal(bodies[0].reasoning_effort,undefined);assert.equal(bodies[0].temperature,undefined);assert.equal(bodies[0].store,undefined);assert.match(bodies[0].messages[0].content,/親密さ：信頼/);
+  await chat({...openrouter,cloudReasoning:'low',cloudTemperature:true},[],'hi',undefined,{apiKey:'router-secret'});assert.deepEqual(bodies[1].reasoning,{effort:'low'});assert.equal(bodies[1].temperature,.7);
+  await chat({...openrouter,cloudReasoning:'none'},[],'hi',undefined,{apiKey:'router-secret'});assert.deepEqual(bodies[2].reasoning,{enabled:false});
+  assert.equal(await touchReply(openrouter,[],{region:'head',gesture:'stroke',emotion:'shy',count:0},undefined,{apiKey:'router-secret',relationshipContext:'親密さ：親しみ'}),'こんにちは');assert.match(bodies[3].messages[0].content,/親密さ：親しみ/);assert.equal(bodies[3].model,openrouter.model);
+ });
+});
+test('OpenRouter credit/provider errors preserve readable messages, redact keys, and do not retry',async()=>{
+ for(const status of [200,402,429,503]){let count=0;await fakeFetch(async()=>{count++;return json({error:{message:'router-secret: provider unavailable or insufficient credits'}},status);},async()=>{
+  await assert.rejects(chat(openrouter,[],'hi',undefined,{apiKey:'router-secret'}),e=>!e.message.includes('router-secret')&&e.message.includes('provider unavailable'));
+  assert.equal(count,1);
+ });}
+});

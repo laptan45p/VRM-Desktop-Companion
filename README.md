@@ -17,14 +17,28 @@
 
 初回は実行ファイル入りのWindows版ZIPをすべて展開し、`VRM-Desktop-Companion.exe` を起動してください。Node.jsは不要です。
 
-0.1.0〜0.1.18から差分更新する場合：
+0.1.0〜0.1.19から差分更新する場合：
 
 1. トレイメニューからアプリを完全に終了します。
 2. 更新ZIPを展開し、中身の `apply_update.bat` と `update-files` などを、exeのあるフォルダーへ置きます。
 3. `apply_update.bat` を実行します。
 4. 従来のexeから起動します。
 
-元ファイルは `backup-before-v0.1.19` に保存します。会話履歴、名前、性格、LLM設定、VRMのパスは引き継ぎます。戻す場合はアプリを終了し、バックアップ内のappフォルダーをresources/appへ戻してください。app.asarがあればresourcesへ戻します。
+元ファイルは `backup-before-v0.1.20` に保存します。会話履歴、名前、性格、LLM設定、VRMのパスは引き継ぎます。戻す場合はアプリを終了し、バックアップ内のappフォルダーをresources/appへ戻してください。app.asarがあればresourcesへ戻します。
+
+## OpenRouterで接続（0.1.20）
+
+1. OpenRouterでアカウントとAPIキーを用意し、使うモデルの利用条件・残高を確認します。
+2. 「設定 → 会話用LLM → 接続方式」で「OpenRouter（クラウド）」を選びます。URLは `https://openrouter.ai/api/v1` に自動設定されます。
+3. **OpenRouterで発行したキー**を入力して「APIキーを登録」。OpenAIやAnthropicのキーを直接入力しないでください。
+4. 「モデル取得」で一覧から選ぶか、`anthropic/claude-haiku-5.5` のような **提供元/モデル名** のIDを直接入力します。特定のモデルは自動選択しません。提供状況は一覧とOpenRouter側で確認してください。画像・音声専用と判別できるモデルは候補から除きます。
+5. 「設定を保存」して話しかけます。会話・タッチ反応・好感度や告白イベントの文脈に同じモデルを使います。
+
+推論量とTemperatureは、まず初期値の「指定しない」で試してください。OpenRouterのトークン上限は `max_tokens`、推論指定は `reasoning` 形式へ変換します。非対応の設定はモデルによってエラーになる場合があります。返答が空の場合は出力上限を増やすか、モデルの対応する推論設定を確認してください。内部の推論テキストは会話に表示せず、最終的な返答だけを使います。
+
+APIキーは専用の接続方式として暗号化保存し、OpenAI・他の互換APIと分けます。以前「OpenAI互換API」でOpenRouterを登録した場合は、キーを再登録してください。従来の互換API設定とキーも残ります。OpenRouterと選択モデルの提供先へ会話を送信し、料金・データの取り扱いは各サービスの設定に従います。アプリでは課金リクエストを自動再試行しません。
+
+参考：[公式Quickstart](https://openrouter.ai/docs/quickstart) ／ [APIキー発行](https://openrouter.ai/settings/keys) ／ [モデル一覧](https://openrouter.ai/models)
 
 ## 好感度と恋愛要素（0.1.19）
 

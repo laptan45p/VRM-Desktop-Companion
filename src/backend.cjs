@@ -9,7 +9,8 @@ const DEFAULTS = {
 function cleanSettings(input = {}) {
   const s = { ...DEFAULTS };
   for (const k of ['provider','endpoint','model','name','persona','modelPath','bubbleFont','motionFolder','greetingMotion','idleMotion','ttsEndpoint','speakerPath','ttsCaption']) if (typeof input[k] === 'string') s[k] = input[k].slice(0, k === 'persona' ? 12000 : 2000);
-  if (!['ollama', 'lmstudio','openai','compatible'].includes(s.provider)) throw new Error('接続方式を選んでください。');
+  if (!['ollama', 'lmstudio','openai','openrouter','compatible'].includes(s.provider)) throw new Error('接続方式を選んでください。');
+  if(s.provider==='openrouter')s.endpoint='https://openrouter.ai/api/v1';
   if(s.provider==='openai'&&!s.model.trim())s.model='gpt-6-luna';
   for (const [k,min,max] of [['temperature',0,2],['historyTurns',1,40],['scale',0.5,10.0],['angle',-180,180],['angleX',-180,180],['angleY',-180,180],['angleZ',-180,180],['motionStrength',0,1],['touchZoneScale',.75,1.4],['bubbleFontSize',8,72],['clothReach',.02,.5],['clothAngle',10,120],['motionInterval',10,3600],['idleSpeed',.1,3],['idlePose',0,100],['ttsSpeed',.25,4],['ttsVolume',0,1],['ttsTimeout',30,900],['cloudMaxTokens',128,8192]]) {
     if (Number.isFinite(Number(input[k]))) s[k] = Math.max(min, Math.min(max, Number(input[k])));
@@ -36,11 +37,15 @@ function localBase(endpoint) {
   if (!['/', '', '/v1', '/v1/'].includes(u.pathname)) throw new Error('接続先にはAPIのルートURLを指定してください。');
   return u.origin;
 }
-function isCloud(provider){return provider==='openai'||provider==='compatible';}
+function isCloud(provider){return provider==='openai'||provider==='openrouter'||provider==='compatible';}
 function llmBase(settings){
  if(!isCloud(settings.provider))return localBase(settings.endpoint);
  let u;try{u=new URL(settings.endpoint);}catch{throw new Error('接続先URLを確認してください。');}
  if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash)throw new Error('クラウドLLMには認証情報やクエリを含まないHTTPSのベースURLを指定してください。');
+ if(settings.provider==='openrouter'){
+  if(u.origin!=='https://openrouter.ai'||!['/api/v1','/api/v1/'].includes(u.pathname))throw new Error('OpenRouterの接続先は https://openrouter.ai/api/v1 です。');
+  return 'https://openrouter.ai/api/v1';
+ }
  if(settings.provider==='openai'){
   if(u.origin!=='https://api.openai.com'||!['/','/v1','/v1/'].includes(u.pathname))throw new Error('OpenAIの接続先は https://api.openai.com/v1 です。互換APIは接続方式を切り替えてください。');
   return 'https://api.openai.com/v1';
@@ -59,7 +64,7 @@ async function requestJSON(url, options = {}, timeoutMs = 180000) {
     let text = await r.text();const secret=options.headers?.Authorization?.replace(/^Bearer /,'');if(secret)text=text.split(secret).join('[APIキー非表示]');
     let body;
     try { body = JSON.parse(text); } catch { throw new Error(`APIからJSON以外が返りました（HTTP ${r.status}）。ポート番号とサーバーを確認してください。`); }
-    if (!r.ok) throw new Error(`HTTP ${r.status}: ${String(body.error?.message || body.error || body.message || body.detail || 'APIエラー').slice(0,600)}`);
+    if (!r.ok || body.error) throw new Error(`${!r.ok?'HTTP '+r.status:'APIエラー'}: ${String(body.error?.message || body.error || body.message || body.detail || 'APIエラー').slice(0,600)}`);
     return body;
   } catch(e) {
     if (options.signal?.aborted) throw new Error('生成を停止しました。');
@@ -72,7 +77,7 @@ async function requestJSON(url, options = {}, timeoutMs = 180000) {
 async function listModels(settings,{apiKey=''}={}) {
   const base = llmBase(settings);
   const r = await requestJSON(base + (settings.provider === 'ollama' ? '/api/tags' : isCloud(settings.provider)?'/models':'/v1/models'), {headers:authorization(settings,apiKey)}, 10000);
-  return (settings.provider === 'ollama' ? (r.models || []).map(m => m.name) : (r.data || []).map(m => m.id)).filter(x => typeof x === 'string');
+  return (settings.provider === 'ollama' ? (r.models || []).map(m => m.name) : (r.data || []).filter(m=>settings.provider!=='openrouter'||(!Array.isArray(m.architecture?.output_modalities)||m.architecture.output_modalities.includes('text'))&&(!Array.isArray(m.architecture?.input_modalities)||m.architecture.input_modalities.includes('text'))).map(m => m.id)).filter(x => typeof x === 'string');
 }
 async function chat(settings, history, userText, signal, {maxTokens,timeoutMs=180000,systemExtra='',apiKey=''}={}) {
   const base = llmBase(settings),cloud=isCloud(settings.provider);maxTokens??=cloud?settings.cloudMaxTokens:512;
@@ -81,7 +86,16 @@ async function chat(settings, history, userText, signal, {maxTokens,timeoutMs=18
   const messages = [{role:'system',content:`あなたの名前は「${settings.name}」です。\n${settings.persona}${systemExtra?"\n"+systemExtra:""}`}, ...history.slice(-settings.historyTurns * 2), {role:'user',content:userText}];
   const ollama = settings.provider === 'ollama';
   const body = {model:settings.model, messages, stream:false, ...(ollama ? {options:{temperature:settings.temperature,num_predict:maxTokens}} : {temperature:settings.temperature,max_tokens:maxTokens})};
-  if(cloud){delete body.temperature;delete body.max_tokens;body[settings.provider==='openai'?'max_completion_tokens':settings.compatibleTokenParam]=maxTokens;if(settings.cloudTemperature)body.temperature=settings.temperature;if(settings.cloudReasoning!=='auto')body.reasoning_effort=settings.cloudReasoning;if(settings.provider==='openai')body.store=false;}
+  if(cloud){
+    delete body.temperature;delete body.max_tokens;
+    body[settings.provider==='openai'?'max_completion_tokens':settings.provider==='openrouter'?'max_tokens':settings.compatibleTokenParam]=maxTokens;
+    if(settings.cloudTemperature)body.temperature=settings.temperature;
+    if(settings.cloudReasoning!=='auto'){
+      if(settings.provider==='openrouter')body.reasoning=settings.cloudReasoning==='none'?{enabled:false}:{effort:settings.cloudReasoning};
+      else body.reasoning_effort=settings.cloudReasoning;
+    }
+    if(settings.provider==='openai')body.store=false;
+  }
   // Qwen3's optional thinking can consume the entire short reply budget.
   if (ollama && /^qwen3(?::|$)/i.test(settings.model)) body.think = false;
   const r = await requestJSON(base + (ollama ? '/api/chat' : cloud?'/chat/completions':'/v1/chat/completions'), {method:'POST',headers:{'Content-Type':'application/json',...authorization(settings,apiKey)},body:JSON.stringify(body),signal},timeoutMs);
