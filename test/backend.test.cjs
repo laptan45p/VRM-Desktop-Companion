@@ -63,3 +63,8 @@ test('motion settings default to 60 seconds and survive persistence with interva
  assert.equal(DEFAULTS.motionInterval,60);assert.equal(DEFAULTS.randomMotion,true);assert.equal(DEFAULTS.greetingMotion,'VRMA_02.vrma');assert.equal(cleanSettings({motionInterval:1}).motionInterval,10);assert.equal(cleanSettings({motionInterval:99999}).motionInterval,3600);assert.equal(cleanSettings({motionInterval:'bad'}).motionInterval,60);
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'motion-settings-'));try{const a=new Store(dir);a.data.settings=cleanSettings({motionFolder:'/motions',greetingMotion:'hi.vrma',motionInterval:120,randomMotion:false});a.save();const b=new Store(dir);b.load();assert.deepEqual(b.data.settings,a.data.settings);}finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('idle settings migrate, validate and persist',()=>{
+ const old=cleanSettings({});assert.equal(old.idleMotion,'');assert.equal(old.idleMode,'loop');assert.equal(old.idleSpeed,1);assert.equal(old.idlePose,50);assert.equal(cleanSettings({idleMode:'invalid'}).idleMode,'loop');assert.equal(cleanSettings({idlePose:200,idleSpeed:100}).idlePose,100);assert.equal(cleanSettings({idleSpeed:100}).idleSpeed,3);assert.equal(cleanSettings({idlePose:-1,idleSpeed:0}).idlePose,0);assert.equal(cleanSettings({idleSpeed:0}).idleSpeed,.1);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'idle-settings-'));try{const a=new Store(dir);a.data.settings=cleanSettings({idleMotion:'pose.vrma',idleMode:'pose',idleSpeed:.5,idlePose:35});a.save();const b=new Store(dir);b.load();assert.deepEqual(b.data.settings,a.data.settings);}finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

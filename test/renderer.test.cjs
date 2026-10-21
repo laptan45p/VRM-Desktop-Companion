@@ -105,3 +105,14 @@ test('renderer loads VRMA, greets on startup/click and restores pose on hide',as
 test('VRMA controls persist greeting, periodic toggle and interval',async()=>{
  const {node,calls}=await boot('control');assert.equal(Number(node('motionInterval').value),60);assert.equal(node('randomMotion').checked,true);node('motionInterval').value='120';node('greetingMotion').value='my_greeting.vrma';node('randomMotion').checked=false;await node('settingsForm').onsubmit({preventDefault(){}});const s=calls.find(c=>c[0]==='save')[1];assert.equal(s.motionInterval,120);assert.equal(s.greetingMotion,'my_greeting.vrma');assert.equal(s.randomMotion,false);
 });
+
+test('idle controls save selected file, mode, speed, and pose while preserving drafts',async()=>{
+ const {node,calls,notify}=await boot('control','vrma');for(let i=0;i<3;i++)await new Promise(r=>setImmediate(r));assert.ok(node('idleMotion').children.some(o=>o.value==='VRMA_02.vrma'));assert.equal(node('idleMotion').value,'');
+ node('idleMotion').value='VRMA_02.vrma';node('idleMode').value='pose';node('idlePose').value='45';node('idleSpeed').value='.6';node('persona').value='draft';node('settingsForm').oninput();notify({reloadMotions:true,settings:{...DEFAULTS}});for(let i=0;i<3;i++)await new Promise(r=>setImmediate(r));assert.equal(node('persona').value,'draft');assert.equal(node('idleMotion').value,'VRMA_02.vrma');
+ await node('settingsForm').onsubmit({preventDefault(){}});const s=calls.find(c=>c[0]==='save')[1];assert.equal(s.idleMotion,'VRMA_02.vrma');assert.equal(s.idleMode,'pose');assert.equal(s.idlePose,45);assert.equal(s.idleSpeed,.6);
+});
+test('renderer displays chosen static idle after greeting, during conversation, and after showing again',async()=>{
+ const {rendered,tick,notify}=await boot('mascot','vrma');for(let i=0;i<12;i++)await new Promise(r=>setImmediate(r));const settings={...DEFAULTS,modelPath:'fixture.vrm',softIdle:false,randomMotion:false,idleMotion:'VRMA_02.vrma',idleMode:'pose',idlePose:50};notify({settings});for(let i=0;i<30;i++)tick();const arm=rendered.scene.getObjectByName('Normalized_leftUpperArm');assert.ok(Math.abs(arm.quaternion.z)>.6);
+ notify({busy:true});for(let i=0;i<10;i++)tick();assert.ok(Math.abs(arm.quaternion.z)>.6);notify({busy:false,greeting:true});for(let i=0;i<30;i++)tick();assert.ok(Math.abs(arm.quaternion.z)>.6);
+ notify({mascotVisible:false});tick();assert.ok(Math.abs(arm.quaternion.z)<.6);notify({mascotVisible:true});for(let i=0;i<10;i++)tick();assert.ok(Math.abs(arm.quaternion.z)>.6);
+});

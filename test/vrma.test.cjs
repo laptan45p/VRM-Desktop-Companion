@@ -28,3 +28,27 @@ test('motion folder scanning, GLB validation and selection reject unregistered/e
 test('suspending automatic motion leaves the existing idle pose free to animate',async()=>{
  const {vrm}=await setup(),p=new VrmaPlayer(T);p.bind(vrm);const head=vrm.humanoid.getNormalizedBoneNode('head');head.rotation.x=.12;p.update(.05,1,{blocked:true});assert.ok(Math.abs(head.rotation.x-.12)<1e-8);head.rotation.x=.16;p.update(.05,2,{blocked:true});assert.ok(Math.abs(head.rotation.x-.16)<1e-8);
 });
+
+test('selected idle loops at configured speed over several clip durations',async()=>{
+ const {vrm,clip}=await setup(),p=new VrmaPlayer(T);p.bind(vrm);p.configure({idleMotion:'idle',idleMode:'loop',idleSpeed:.5,randomMotion:false});p.install(new Map([['idle',clip]]));p.pending=false;
+ for(let i=0;i<90;i++){p.restorePose();p.update(.05,i*.05);}assert.ok(p.background);assert.equal(p.current,null);assert.ok(Math.abs(p.background.action.time-.25)<1e-6);assert.ok(p.background.action.isRunning());assert.equal(p.background.action.getEffectiveWeight(),1);
+});
+test('static idle samples requested pose without advancing, including exact endpoints',async()=>{
+ const {vrm,clip}=await setup(),p=new VrmaPlayer(T);p.bind(vrm);p.configure({idleMotion:'idle',idleMode:'pose',idlePose:50,randomMotion:false});p.install(new Map([['idle',clip]]));p.pending=false;
+ for(let i=0;i<10;i++){p.restorePose();p.update(.05,i*.05);}const arm=vrm.humanoid.getNormalizedBoneNode('leftUpperArm'),q=arm.quaternion.clone();assert.ok(Math.abs(p.background.action.time-.5)<1e-8);
+ for(let i=10;i<100;i++){p.restorePose();p.update(.05,i*.05);}assert.ok(arm.quaternion.angleTo(q)<1e-7);assert.ok(Math.abs(q.z)>.6);
+ for(const percent of [0,100]){p.configure({idlePose:percent});for(let i=0;i<10;i++){p.restorePose();p.update(.05,5+i*.05);}assert.ok(Math.abs(p.background.action.time-percent/100)<1e-8);assert.ok(Math.abs(arm.quaternion.z)<1e-6);}
+});
+test('one-shot greeting and periodic motion blend back to idle even when sharing a file',async()=>{
+ const {vrm,clip}=await setup(),p=new VrmaPlayer(T);p.bind(vrm);p.configure({idleMotion:'both',greetingMotion:'both',idleMode:'pose',idlePose:50,randomMotion:true,motionInterval:10});p.install(new Map([['both',clip]]));
+ for(let i=0;i<11;i++){p.restorePose();p.update(.05,i*.05);}assert.ok(p.current);assert.notEqual(p.current.action,p.background.action);
+ for(let i=11;i<30;i++){p.restorePose();p.update(.05,i*.05);}assert.equal(p.current,null);assert.ok(Math.abs(vrm.humanoid.getNormalizedBoneNode('leftUpperArm').quaternion.z)>.6);assert.equal(p.background.action.getEffectiveWeight(),1);
+ p.update(.05,12);assert.ok(p.current);for(let i=0;i<24;i++){p.restorePose();p.update(.05,12+i*.05);}assert.equal(p.current,null);assert.ok(Math.abs(vrm.humanoid.getNormalizedBoneNode('leftUpperArm').quaternion.z)>.6);
+});
+test('idle continues through conversation, yields to manipulation and resumes; missing file falls back',async()=>{
+ const {vrm,clip}=await setup(),p=new VrmaPlayer(T);p.bind(vrm);p.configure({idleMotion:'idle',idleMode:'pose',idlePose:50,randomMotion:false});p.install(new Map([['idle',clip]]));p.pending=false;
+ for(let i=0;i<10;i++){p.restorePose();p.update(.05,i*.05,{blocked:true});}assert.ok(p.background);assert.ok(Math.abs(vrm.humanoid.getNormalizedBoneNode('leftUpperArm').quaternion.z)>.6);
+ p.interrupt();p.update(.05,1,{blocked:true,suspendIdle:true});assert.equal(p.background,null);assert.ok(Math.abs(vrm.humanoid.getNormalizedBoneNode('leftUpperArm').quaternion.z)<1e-6);
+ for(let i=0;i<10;i++){p.restorePose();p.update(.05,2+i*.05);}assert.ok(p.background);p.configure({idleMotion:'missing'});p.restorePose();p.update(.05,3);assert.equal(p.background,null);assert.ok(Math.abs(vrm.humanoid.getNormalizedBoneNode('leftUpperArm').quaternion.z)<1e-6);
+ p.configure({idleMotion:'idle'});p.update(.05,4);p.dispose();assert.equal(p.background,null);assert.equal(p.mixer,null);
+});

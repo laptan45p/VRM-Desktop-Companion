@@ -1,6 +1,6 @@
-# Validation — 0.1.15
+# Validation — 0.1.16
 
-76 tests passed after a fresh dependency install and renderer build:
+83 tests passed after a fresh dependency install and renderer build:
 
 - Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
 - VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
@@ -76,3 +76,13 @@ Native Windows visual interaction has not been verified in this environment.
 - Native Windows visual appearance and manual gesture interaction remain unverified in this environment.
 
 - Suspended VRMA playback preserves pose changes from the existing idle animation.
+
+## Selected idle animation / pose coverage
+
+- Loop playback across several durations at configured speed; frozen pose remains stable over 100 frames, including exact 0%/100% endpoints.
+- Real mixer blends one-shot greetings/random motions back to selected idle; idle and greeting can use the same source clip independently.
+- Conversation continues idle, manipulation suspends it, release/show resumes it, missing idle file falls back, disposal releases actions.
+- Renderer integration covers static idle after greeting, during conversation, after another greeting, and hide/show. Form selection, draft preservation, settings validation, migration, persistence.
+- Static/constant tracks are re-applied after procedural idle and IK preparation so unchanged mixer tracks cannot revert to the neutral pose.
+- Separately sampled all seven supplied VRM animations in both loop and frozen-pose modes on VRM 0.x and 1.0 fixtures (28 combinations), checking finite transforms and static pose stability. Motion files are not included in the repository or release.
+- Native Windows visual checks remain unperformed in this environment.
