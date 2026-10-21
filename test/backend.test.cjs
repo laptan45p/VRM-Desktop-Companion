@@ -68,3 +68,7 @@ test('idle settings migrate, validate and persist',()=>{
  const old=cleanSettings({});assert.equal(old.idleMotion,'');assert.equal(old.idleMode,'loop');assert.equal(old.idleSpeed,1);assert.equal(old.idlePose,50);assert.equal(cleanSettings({idleMode:'invalid'}).idleMode,'loop');assert.equal(cleanSettings({idlePose:200,idleSpeed:100}).idlePose,100);assert.equal(cleanSettings({idleSpeed:100}).idleSpeed,3);assert.equal(cleanSettings({idlePose:-1,idleSpeed:0}).idlePose,0);assert.equal(cleanSettings({idleSpeed:0}).idleSpeed,.1);
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'idle-settings-'));try{const a=new Store(dir);a.data.settings=cleanSettings({idleMotion:'pose.vrma',idleMode:'pose',idleSpeed:.5,idlePose:35});a.save();const b=new Store(dir);b.load();assert.deepEqual(b.data.settings,a.data.settings);}finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('voice settings migrate disabled and persist with bounded synthesis options',()=>{
+ assert.equal(cleanSettings({}).ttsEnabled,false);const s=cleanSettings({ttsEnabled:true,speakerPath:'/voice.speaker.safetensors',ttsEndpoint:'http://localhost:8088',ttsSpeed:99,ttsVolume:-1,ttsTimeout:9999,ttsCaption:'やさしく'});assert.equal(s.ttsSpeed,4);assert.equal(s.ttsVolume,0);assert.equal(s.ttsTimeout,900);const dir=fs.mkdtempSync(path.join(os.tmpdir(),'voice-settings-'));try{const a=new Store(dir);a.data.settings=s;a.save();const b=new Store(dir);b.load();assert.deepEqual(b.data.settings,s);}finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

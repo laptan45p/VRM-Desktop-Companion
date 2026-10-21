@@ -2,6 +2,8 @@ const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('companion', {
   state:()=>ipcRenderer.invoke('state'),
   save:s=>ipcRenderer.invoke('save',s),
+  chooseSpeaker:()=>ipcRenderer.invoke('choose-speaker'),
+  voiceState:(id,phase,error)=>ipcRenderer.invoke('voice-state',id,phase,error),
   chooseMotions:()=>ipcRenderer.invoke('choose-motions'),
   motionList:()=>ipcRenderer.invoke('motion-list'),
   motionData:name=>ipcRenderer.invoke('motion-data',name),

@@ -12,8 +12,8 @@ function status(id,text,error=false){$(id).textContent=text;$(id).classList.togg
 async function call(promise){const r=await promise;if(!r.ok)throw new Error(r.error);return r.data;}
 function wrap(fn,id='chatStatus'){return async(...args)=>{try{await fn(...args);}catch(e){status(id,e.message,true);}};}
 function selectControlTab(which){const chat=which==='chat';$('chatView').hidden=!chat;$('settingsView').hidden=chat;$('chatTab').classList.toggle('selected',chat);$('settingsTab').classList.toggle('selected',!chat);}
-function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona','bubbleFont','greetingMotion','idleMotion','idleMode'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion'])s[k]=$(k).checked;s.clothReach=Number($('clothReach').value)/100;return s;}
-function fillSettings(s){for(const id of ['provider','endpoint','name','persona','bubbleFont','temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion'])$(k).checked=s[k];$('clothReach').value=Math.round(s.clothReach*100);setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';$('motionPath').textContent=s.motionFolder||'モーション未選択';$('idleMode').value=s.idleMode;setMotionOptions(motionNames,s.greetingMotion,s.idleMotion);}
+function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona','bubbleFont','greetingMotion','idleMotion','idleMode','ttsEndpoint','ttsCaption'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose','ttsSpeed','ttsVolume','ttsTimeout'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled'])s[k]=$(k).checked;s.clothReach=Number($('clothReach').value)/100;return s;}
+function fillSettings(s){for(const id of ['provider','endpoint','name','persona','bubbleFont','temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose','ttsSpeed','ttsVolume','ttsTimeout'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled'])$(k).checked=s[k];$('clothReach').value=Math.round(s.clothReach*100);setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';$('motionPath').textContent=s.motionFolder||'モーション未選択';$('ttsEndpoint').value=s.ttsEndpoint;$('ttsCaption').value=s.ttsCaption;$('speakerPath').textContent=s.speakerPath||'Speaker Embedding未選択';$('idleMode').value=s.idleMode;setMotionOptions(motionNames,s.greetingMotion,s.idleMotion);}
 let motionNames=[];
 function setMotionOptions(names,selected,idleSelected){motionNames=names;const idle=$('idleMotion');idle.replaceChildren();idle.add(new Option('標準の待機動作',''));for(const name of names)idle.add(new Option(name,name));if(idleSelected&&!names.includes(idleSelected))idle.add(new Option(idleSelected+'（未読み込み・標準動作を使用）',idleSelected));idle.value=idleSelected||'';const el=$('greetingMotion');el.replaceChildren();for(const name of names)el.add(new Option(name,name));if(!names.includes(selected))el.add(new Option(selected||'VRMA_02.vrma',selected||'VRMA_02.vrma'));el.value=selected||'VRMA_02.vrma';}
 async function refreshMotionOptions(){try{const names=await call(api.motionList());setMotionOptions(names,dirty?$('greetingMotion').value:state.settings.greetingMotion,dirty?$('idleMotion').value:state.settings.idleMotion);}catch(e){status('motionStatus',e.message,true);}}
@@ -27,7 +27,7 @@ function renderHistory(){
 }
 function updateBusy(value){busy=value;$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear','fetchModels'])$(id).disabled=busy;}
 async function initControl(){
- fillSettings(state.settings);refreshMotionOptions();$('chooseMotions').onclick=wrap(async()=>{const names=await call(api.chooseMotions());if(names){await refreshMotionOptions();$('motionPath').textContent=state.settings.motionFolder;status('motionStatus',names.length+'件のモーションを登録しました。');}},'motionStatus');$('dataPath').textContent='設定と履歴：'+state.dataPath;
+ fillSettings(state.settings);status('voiceStatus',state.voiceStatus||'');$('chooseSpeaker').onclick=wrap(async()=>{const path=await call(api.chooseSpeaker());if(path)$('speakerPath').textContent=path;},'voiceStatus');$('testVoice').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');await call(api.action('test-voice'));},'voiceStatus');$('stopVoice').onclick=()=>api.action('stop-voice');refreshMotionOptions();$('chooseMotions').onclick=wrap(async()=>{const names=await call(api.chooseMotions());if(names){await refreshMotionOptions();$('motionPath').textContent=state.settings.motionFolder;status('motionStatus',names.length+'件のモーションを登録しました。');}},'motionStatus');$('dataPath').textContent='設定と履歴：'+state.dataPath;
  const tabs=selectControlTab;
  $('chatTab').onclick=()=>tabs('chat');$('settingsTab').onclick=()=>tabs('settings');
  $('settingsForm').oninput=()=>{dirty=true;};
@@ -53,6 +53,12 @@ async function initControl(){
 }
 let scene,camera,renderer,vrm,demoRoot,modelRoot,clock,elapsed=0,loadId=0,moodUntil=0,blinkAt=2,blinkStart=-10;
 let rest=new Map(),cloth=null,hands=null,orientationPreview=null,cancelInteraction=()=>{};
+let utteranceId=null,voiceText='';
+const speechAudio=new window.companionAudio.SpeechAudio(()=>new window.AudioContext({latencyHint:'interactive'}),(id,phase,error)=>{
+ if(phase==='start'&&id===utteranceId)lips.play(voiceText,performance.now()/1000);
+ if(phase==='ended'||phase==='error')lips.stop();api.voiceState(id,phase,error);
+});
+function stopVoiceLocal(){speechAudio.stop();lips.stop();utteranceId=null;voiceText='';}
 const motionPlayer=new window.companionVrma.VrmaPlayer(THREE);
 let motionGeneration=0,interacting=false,motionHoldUntil=0;
 async function loadMotions(){
@@ -128,7 +134,7 @@ function resizeViewport(){
  fitModel(vrm?.scene||demoRoot);
 }
 async function loadVRM(announce=false){
- cancelInteraction();++motionGeneration;motionPlayer.dispose();
+ stopVoiceLocal();cancelInteraction();++motionGeneration;motionPlayer.dispose();
  const id=++loadId;
  if(!state.settings.modelPath)return;
  
@@ -173,8 +179,8 @@ function initMascot(){
  if(vrm){
  cloth?.restore();hands?.restore();motionPlayer.restorePose();
  idle.update(vrm,rest,elapsed,dt,{enabled:state.settings.softIdle,strength:state.settings.motionStrength,thinking:state.busy});
- motionPlayer.update(dt,elapsed,{blocked:interacting||elapsed<motionHoldUntil||state.busy||state.mascotVisible===false,speaking:lips.active(performance.now()/1000),suspendIdle:interacting||elapsed<motionHoldUntil||state.mascotVisible===false});
- const talking=lips.update(vrm,performance.now()/1000,dt,state.settings.lipSync);
+ motionPlayer.update(dt,elapsed,{blocked:interacting||elapsed<motionHoldUntil||state.busy||state.mascotVisible===false,speaking:speechAudio.active()||lips.active(performance.now()/1000),suspendIdle:interacting||elapsed<motionHoldUntil||state.mascotVisible===false});
+ const talking=lips.update(vrm,performance.now()/1000,dt,state.settings.lipSync,speechAudio.sample());
  if(elapsed>=blinkAt){blinkStart=elapsed;blinkAt=elapsed+2.5+Math.random()*3;}
  const p=(elapsed-blinkStart)/.18;const blink=p>=0&&p<1?Math.sin(p*Math.PI):0;
  vrm.expressionManager?.setValue('blink',blink);vrm.expressionManager?.setValue('happy',elapsed<moodUntil?(talking?0:.35):0);
@@ -296,7 +302,11 @@ api.onUpdate(data=>{
   if(data.settings)motionPlayer.configure(state.settings,elapsed);
   if(data.reloadMotions)loadMotions();
   if(data.reaction)reactionMotion.trigger(data.reaction.emotion,performance.now()/1000);
-  if(data.speech!==undefined){if(data.speech&&!data.thinking)lips.play(data.speech,performance.now()/1000);else if(!data.speech)lips.stop();}
+  if(data.voiceStop||data.mascotVisible===false)stopVoiceLocal();
+  if(data.speech!==undefined){stopVoiceLocal();utteranceId=data.speechId??null;if(data.speech&&!data.thinking&&!data.ttsPending)lips.play(data.speech,performance.now()/1000);}
+  if(data.voiceFailed===utteranceId&&state.speech)lips.play(state.speech,performance.now()/1000);
+  if(data.voiceAudio&&data.voiceAudio.id===utteranceId&&state.mascotVisible!==false){voiceText=data.voiceAudio.text;lips.stop();speechAudio.play(data.voiceAudio);}
+  if(data.settings&&!state.settings.ttsEnabled&&before.ttsEnabled)stopVoiceLocal();
   if(data.reloadVRM)loadVRM(true);
   if(data.settings)cloth?.configure?.(state.settings);
   if(data.pass||data.settings&&(before.handDrag!==state.settings.handDrag||before.clothDrag!==state.settings.clothDrag||before.clothReach!==state.settings.clothReach||before.clothAngle!==state.settings.clothAngle||rotationChanged||before.scale!==state.settings.scale)){cancelInteraction();cloth?.reset();hands?.reset();}
@@ -307,6 +317,7 @@ api.onUpdate(data=>{
   if(data.bubbleSide)document.body.dataset.side=data.bubbleSide;
   if(data.speech!==undefined||data.settings)updateSpeech(data.speech);
  }else{
+  if(data.voiceStatus!==undefined)status('voiceStatus',data.voiceStatus);
   if(data.reloadMotions)refreshMotionOptions();
   if(!dirty)fillSettings(state.settings);else if(rotationChanged)for(const k of ['angleX','angleY','angleZ'])$(k).value=state.settings[k];$('companionName').textContent=state.settings.name;$('modelBadge').textContent=state.settings.model||'モデル未選択';
   if(data.reply)pendingText='';renderHistory();updateBusy(state.busy);if(data.controlTab)selectControlTab(data.controlTab);

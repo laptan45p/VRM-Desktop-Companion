@@ -42,3 +42,10 @@ test('reactions animate without facial presets and restore bones after completio
   VRMUtils.deepDispose(vrm.scene);
  }
 });
+
+
+test('audio-driven lip motion uses actual silence and progress beyond pseudo speech duration',()=>{
+ const values={},vrm={expressionManager:{getExpression:()=>({}),setValue:(k,v)=>values[k]=v}},lips=new LipMotion();lips.play('あいうえお',0);
+ for(let i=0;i<12;i++)lips.update(vrm,100,.05,true,{active:true,progress:.1,level:.12});assert.ok(values.aa>.5);for(let i=0;i<20;i++)lips.update(vrm,101,.05,true,{active:true,progress:.6,level:0});assert.ok(Object.values(values).every(v=>v<.001));
+ for(let i=0;i<12;i++)lips.update(vrm,102,.05,true,{active:true,progress:.5,level:.12});assert.ok(values.ou>.5);lips.update(vrm,103,.05,false,{active:true,progress:.5,level:.12});assert.ok(Object.values(values).every(v=>v===0));
+});

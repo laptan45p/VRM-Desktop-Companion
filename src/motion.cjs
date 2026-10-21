@@ -21,14 +21,14 @@
   play(text,now){this.plan=planSpeech(text);this.start=now;}
   stop(){this.plan={segments:[],duration:0};this.start=-Infinity;}
   active(now){return now>=this.start&&now<this.start+this.plan.duration;}
-  update(vrm,now,dt,enabled=true){
+  update(vrm,now,dt,enabled=true,audio=null){
    if(!enabled)this.stop();const manager=vrm?.expressionManager,available=MOUTHS.filter(k=>manager?.getExpression(k));
-   const t=now-this.start,s=enabled&&this.active(now)?this.plan.segments.find(s=>t>=s.start&&t<s.end):null;
+   const t=audio?.active?audio.progress*this.plan.duration:now-this.start,s=enabled&&(audio?.active||this.active(now))?this.plan.segments.find(s=>t>=s.start&&t<s.end):null;
    const targets=Object.fromEntries(MOUTHS.map(k=>[k,0]));
-   if(s?.vowel&&available.length){const key=available.includes(s.vowel)?s.vowel:available[0],phase=(t-s.start)/(s.end-s.start);targets[key]=Math.pow(Math.max(0,Math.sin(Math.PI*phase)),.7)*.8;}
+   if((audio?.active||s?.vowel)&&available.length){const key=available.includes(s?.vowel)?s.vowel:available[0],phase=s?(t-s.start)/(s.end-s.start):0;targets[key]=audio?.active?Math.min(.95,Math.max(0,(audio.level-.006)*7)):Math.pow(Math.max(0,Math.sin(Math.PI*phase)),.7)*.8;}
    const blend=1-Math.exp(-26*Math.max(0,Math.min(.1,dt)));
    for(const key of MOUTHS){this.values[key]+=(targets[key]-this.values[key])*blend;if(this.values[key]<.001)this.values[key]=0;if(available.includes(key))manager.setValue(key,enabled?this.values[key]:0);}
-   return this.active(now)&&enabled;
+   return !!(audio?.active||this.active(now))&&enabled;
   }
  }
  const BONES=['hips','spine','chest','neck','head','leftUpperArm','rightUpperArm','leftLowerArm','rightLowerArm','leftHand','rightHand'];
@@ -69,3 +69,4 @@
  }
  return {LipMotion,SoftIdle,ReactionMotion,capturePose,planSpeech,MOUTHS};
 });
+

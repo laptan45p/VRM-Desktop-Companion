@@ -1,6 +1,6 @@
-# Validation — 0.1.16
+# Validation — 0.1.17
 
-83 tests passed after a fresh dependency install and renderer build:
+95 tests passed after a fresh dependency install and renderer build:
 
 - Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
 - VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
@@ -86,3 +86,14 @@ Native Windows visual interaction has not been verified in this environment.
 - Static/constant tracks are re-applied after procedural idle and IK preparation so unchanged mixer tracks cannot revert to the neutral pose.
 - Separately sampled all seven supplied VRM animations in both loop and frozen-pose modes on VRM 0.x and 1.0 fixtures (28 combinations), checking finite transforms and static pose stability. Motion files are not included in the repository or release.
 - Native Windows visual checks remain unperformed in this environment.
+
+## Irodori TTS and audio-driven mouth coverage
+
+- Real local HTTP request/response test checks WAV bytes, selected embedding path, caption, speed, response format and model alias; malformed audio, invalid speaker path, nonlocal endpoint, server errors and cancellation.
+- Latest-utterance voice lane discards late completion/failure and aborts superseded work.
+- Web Audio adapter tested with a deterministic audio context: output playback clock, RMS waveform/silence, volume, ending, decode failure and cancellation before playback. This is not an audio device test.
+- Lip motion follows sound amplitude/progress even after pseudo-text timing would have expired, closes during silence and respects disabled/missing vowel expressions.
+- Main-process integration checks embedding choice, mascot-only audio/ack IPC, balloon retention until audio ends, cancellation on hide/new speech and text retention on synthesis failure.
+- Renderer integration covers current/stale audio IDs, waiting before playback, explicit stop, voice settings and saved-settings requirement for testing the voice.
+- Existing model, interaction, orientation, VRMA loop/static pose and UI tests remain passing.
+- Actual Irodori GPU inference with the user's trained embedding, native Windows audio-device output and perceived viseme accuracy remain unverified. No model or embedding is bundled.

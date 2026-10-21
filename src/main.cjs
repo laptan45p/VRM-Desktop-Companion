@@ -1,5 +1,6 @@
 'use strict';
 const motionFiles=require('./vrma-files.cjs');
+const {VoiceLane,checkEmbedding}=require('./tts.cjs');
 const {ReactionCounter}=require('./interaction.cjs');
 const reactions=new ReactionCounter();
 const {TouchResponder}=require('./touch-response.cjs');
@@ -7,8 +8,23 @@ const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,scr
 const fs=require('node:fs/promises'),path=require('node:path');
 const {mascotBounds,popupBounds,restoreInputBounds}=require('./layout.cjs');
 const {Store,cleanSettings,listModels,chat,touchReply}=require('./backend.cjs');
-let store,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null;
+let store,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null,voiceId=0,voiceAwaiting=null,voiceStatus='';
 const touchResponses=new TouchResponder({generate:touchReply,publish:(text,reaction)=>{speak(text,{touch:true});broadcast({reaction});}});
+const voiceLane=new VoiceLane({publish:audio=>{
+ if(audio.id!==voiceId)return;voiceAwaiting=audio.id;clearTimeout(speechTimer);voiceStatus='音声の再生準備中…';broadcast({voiceStatus});
+ mascot.webContents.send('update',{voiceAudio:audio});
+ speechTimer=setTimeout(()=>finishVoice(audio.id,'error','音声の再生を開始できませんでした。'),15000);speechTimer.unref?.();
+},fail:(id,error)=>{if(id!==voiceId)return;voiceStatus=error+' 文字で表示します。';broadcast({voiceStatus,voiceFailed:id});armSpeechTimer();}});
+function cancelVoice(notify=true){voiceId=voiceLane.cancel();voiceAwaiting=null;voiceStatus='';if(notify){clearTimeout(speechTimer);if(speech)armSpeechTimer();broadcast({voiceStop:true,voiceStatus});}}
+function armSpeechTimer(delay=Math.max(7000,Math.min(45000,speech.length*110))){
+ clearTimeout(speechTimer);speechTimer=setTimeout(()=>{speechTimer=null;speech='';bubble.hide();broadcast({speech:''});},delay);speechTimer.unref?.();
+}
+function finishVoice(id,phase,error=''){
+ if(id!==voiceId||voiceAwaiting!==id)return;clearTimeout(speechTimer);
+ if(phase==='start'){voiceStatus='読み上げ中';speechTimer=setTimeout(()=>{cancelVoice();armSpeechTimer();},310000);speechTimer.unref?.();}
+ else {voiceAwaiting=null;if(phase==='error')broadcast({voiceStop:true,voiceFailed:id});voiceStatus=phase==='error'?'音声を再生できません：'+String(error).slice(0,300):'';armSpeechTimer(7000);}
+ broadcast({voiceStatus});
+}
 const gotLock=app.requestSingleInstanceLock();if(!gotLock)app.quit();
 const allWindows=()=>[control,mascot,input,bubble].filter(w=>w&&!w.isDestroyed());
 function result(fn){return async(...args)=>{try{return {ok:true,data:await fn(...args)};}catch(e){return {ok:false,error:e.message};}};}
@@ -35,12 +51,14 @@ function resizeMascot(reset=false){
 function applyHit(){if(mascot&&!mascot.isDestroyed())mascot.setIgnoreMouseEvents(pass||(!hovered&&!drag),{forward:true});}
 function setPass(value){touchResponses.cancel();pass=!!value;drag=null;applyHit();broadcast();}
 function resetMascot(){resizeMascot(true);mascot.show();setPass(false);}
-function hideMascot(){touchResponses.cancel();mascot.hide();bubble.hide();input.hide();drag=null;applyHit();broadcast({mascotVisible:false});}
-function hideSpeech(){touchResponses.cancel();clearTimeout(speechTimer);speechTimer=null;speech='';bubble.hide();broadcast({speech:''});}
-function speak(text,{thinking=false,touch=false}={}){
+function hideMascot(){cancelVoice();touchResponses.cancel();mascot.hide();bubble.hide();input.hide();drag=null;applyHit();broadcast({mascotVisible:false});}
+function hideSpeech(){cancelVoice();touchResponses.cancel();clearTimeout(speechTimer);speechTimer=null;speech='';bubble.hide();broadcast({speech:''});}
+function speak(text,{thinking=false,touch=false,voice=true}={}){
  if(!touch)touchResponses.cancel();
- clearTimeout(speechTimer);speech=String(text).slice(0,12000);broadcast({speech,thinking});positionPopups();
- if(speech){bubble.showInactive();if(!thinking){speechTimer=setTimeout(()=>{speechTimer=null;speech='';bubble.hide();broadcast({speech:''});},Math.max(7000,Math.min(45000,speech.length*110)));speechTimer.unref?.();}}
+ cancelVoice(false);clearTimeout(speechTimer);speech=String(text).slice(0,12000);
+ const useVoice=!!(speech&&!thinking&&voice&&store.data.settings.ttsEnabled);
+ voiceStatus=useVoice?'音声を生成中…':'';broadcast({speech,thinking,speechId:voiceId,ttsPending:useVoice,voiceStatus});positionPopups();
+ if(speech){bubble.showInactive();if(!thinking){if(useVoice)voiceLane.request(voiceId,{...store.data.settings},speech);else armSpeechTimer();}}
  else bubble.hide();
 }
 function showControl(tab='settings'){control.show();control.webContents.send('update',{controlTab:tab});control.focus();}
@@ -53,6 +71,7 @@ function menu(){return Menu.buildFromTemplate([
  {label:'話しかける',click:showInput},
  {label:'設定',click:()=>showControl('settings')},
  {label:'会話履歴',click:()=>showControl('chat')},
+ {label:'読み上げを停止',click:()=>{cancelVoice();armSpeechTimer();}},
  {label:'VRMを選ぶ',click:()=>selectVRM().catch(e=>speak(e.message))},
  {type:'separator'},
  {label:'マスコットを表示',click:()=>{mascot.show();applyHit();broadcast({mascotVisible:true});}},
@@ -65,13 +84,13 @@ async function selectVRM(){
  const r=await dialog.showOpenDialog(mascot,{title:'VRMを選択',filters:[{name:'VRMモデル',extensions:['vrm']}],properties:['openFile']});
  if(r.canceled)return null;
  const file=r.filePaths[0];if((await fs.stat(file)).size>300*1024*1024)throw new Error('読み込み上限は300MBです。');
- touchResponses.cancel();reactions.reset();
+ cancelVoice();touchResponses.cancel();reactions.reset();
  store.data.settings.modelPath=file;store.save();mascot.show();broadcast({reloadVRM:true});return file;
 }
 if(gotLock)app.whenReady().then(async()=>{
  app.setAppUserModelId('local.vrm.desktop.companion');store=new Store(app.getPath('userData'));
  try{store.load();}catch(e){startupError='保存データを読み込めませんでした。設定を確認してください。';try{await fs.copyFile(store.file,store.file+'.backup-'+Date.now());}catch{}}
- const webPreferences={preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true};
+ const webPreferences={preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,autoplayPolicy:'no-user-gesture-required'};
  control=new BrowserWindow({width:570,height:850,minWidth:480,minHeight:650,show:false,title:'VRM Desktop Companion — 設定・履歴',backgroundColor:'#f5f5f3',webPreferences});
  const r=screen.getPrimaryDisplay().workArea;
  mascot=new BrowserWindow({...mascotBounds(store.data.settings.scale,r),show:false,transparent:true,frame:false,resizable:false,hasShadow:false,alwaysOnTop:store.data.settings.topmost,skipTaskbar:true,backgroundColor:'#00000000',webPreferences});
@@ -95,19 +114,25 @@ if(gotLock)app.whenReady().then(async()=>{
  tray.on('click',()=>tray.popUpContextMenu(menu()));tray.on('right-click',()=>tray.popUpContextMenu(menu()));
  if(!globalShortcut.register('CommandOrControl+Alt+M',()=>setPass(!pass)))startupError+=' Ctrl+Alt+Mを登録できませんでした。';
  if(!globalShortcut.register('CommandOrControl+Alt+C',showInput))startupError+=' Ctrl+Alt+Cを登録できませんでした。';
- resizeMascot();applyHit();mascot.showInactive();if(startupError)speak(startupError);
+ resizeMascot();applyHit();mascot.showInactive();if(startupError)speak(startupError,{voice:false});
 });
 app.on('second-instance',()=>{if(input)showInput();});
-app.on('before-quit',()=>{app.isQuitting=true;touchResponses.cancel();active?.abort();clearTimeout(speechTimer);if(inputSaveTimer){clearTimeout(inputSaveTimer);try{store.save();}catch{}}});
+app.on('before-quit',()=>{app.isQuitting=true;cancelVoice(false);touchResponses.cancel();active?.abort();clearTimeout(speechTimer);if(inputSaveTimer){clearTimeout(inputSaveTimer);try{store.save();}catch{}}});
 app.on('will-quit',()=>globalShortcut.unregisterAll());app.on('window-all-closed',()=>app.quit());
 function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=>{if(!allWindows().some(w=>w.webContents===e.sender)||only&&e.sender!==only()?.webContents)throw new Error('不明なウィンドウです。');return fn(...args);}));}
-handle('state',()=>({...store.data,busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech}));
+handle('state',()=>({...store.data,busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus}));
 handle('save',settings=>{
  if(active)throw new Error('生成を停止してから設定を変更してください。');
- touchResponses.cancel();
- store.data.settings=cleanSettings({...settings,modelPath:store.data.settings.modelPath,motionFolder:store.data.settings.motionFolder,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY,bubbleX:store.data.settings.bubbleX,bubbleY:store.data.settings.bubbleY});store.save();
+ cancelVoice();touchResponses.cancel();clearTimeout(speechTimer);if(speech)armSpeechTimer();
+ store.data.settings=cleanSettings({...settings,speakerPath:store.data.settings.speakerPath,modelPath:store.data.settings.modelPath,motionFolder:store.data.settings.motionFolder,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY,bubbleX:store.data.settings.bubbleX,bubbleY:store.data.settings.bubbleY});store.save();
  for(const w of [mascot,input,bubble])w.setAlwaysOnTop(store.data.settings.topmost);resizeMascot();broadcast();return store.data.settings;
 });
+handle('choose-speaker',async()=>{
+ const r=await dialog.showOpenDialog(control,{title:'Speaker Embeddingを選択',filters:[{name:'Speaker Embedding',extensions:['safetensors']}],properties:['openFile']});if(r.canceled)return null;
+ const file=await checkEmbedding(r.filePaths[0]),previous=store.data.settings;cancelVoice();store.data.settings={...previous,speakerPath:file};
+ try{store.save();}catch(e){store.data.settings=previous;throw e;}broadcast();return file;
+},()=>control);
+handle('voice-state',(id,phase,error)=>{if(!Number.isSafeInteger(id)||!['start','ended','error'].includes(phase))throw new Error('音声状態が不正です。');finishVoice(id,phase,error);},()=>mascot);
 handle('choose-motions',async()=>{
  const r=await dialog.showOpenDialog(control,{title:'VRMAモーションフォルダーを選択',properties:['openDirectory']});if(r.canceled)return null;
  const folder=await motionFiles.findFolder(r.filePaths[0]),names=await motionFiles.catalog(folder),previous=store.data.settings;
@@ -142,7 +167,7 @@ handle('orientation',angles=>{
  broadcast();return store.data.settings;
 },()=>mascot);
 handle('bubble-size',(height)=>{if(!Number.isFinite(height))return;const r=area(),h=Math.min(Math.max(90,Math.round(height)),380,r.height);bubble.setBounds({...bubble.getBounds(),height:h,width:Math.min(320,r.width)},false);positionPopups();},()=>bubble);
-handle('model-status',text=>{if(typeof text==='string'&&text)speak(text.slice(0,1000));},()=>mascot);
+handle('model-status',text=>{if(typeof text==='string'&&text)speak(text.slice(0,1000),{voice:false});},()=>mascot);
 handle('chat',async text=>{
  if(active)throw new Error('返答を生成中です。');if(typeof text!=='string'||!text.trim()||text.length>8000)throw new Error('メッセージは1〜8000文字で入力してください。');
  const request=new AbortController();active=request;broadcast({mood:'thinking'});speak('うーん、考え中…',{thinking:true});
@@ -151,11 +176,13 @@ handle('chat',async text=>{
   const previous=store.data.history;store.data.history=[...previous,{role:'user',content:text.trim()},{role:'assistant',content:answer}].slice(-200);
   try{store.save();}catch(e){store.data.history=previous;throw new Error('会話を保存できませんでした: '+e.message);}
   broadcast({reply:answer,mood:'happy'});speak(answer);return answer;
- }catch(e){speak(e.message);throw e;}finally{active=null;broadcast({mood:'idle'});}
+ }catch(e){speak(e.message,{voice:false});throw e;}finally{active=null;broadcast({mood:'idle'});}
 });
-handle('cancel',()=>{touchResponses.cancel();active?.abort();});handle('clear',()=>{touchResponses.cancel();if(active)throw new Error('生成を停止してください。');store.data.history=[];store.save();broadcast();});
+handle('cancel',()=>{cancelVoice();touchResponses.cancel();active?.abort();});handle('clear',()=>{touchResponses.cancel();if(active)throw new Error('生成を停止してください。');store.data.history=[];store.save();broadcast();});
 handle('action',name=>{
- if(name==='test-motion'){speak('こんにちは。こんな感じでお話しするよ。よろしくね。');broadcast({greeting:true});}
+ if(name==='test-voice'){if(!store.data.settings.ttsEnabled)throw new Error('読み上げを有効にして設定を保存してください。');speak('こんにちは。これから、この声でお話しするね。');}
+ else if(name==='stop-voice'){cancelVoice();armSpeechTimer();}
+ else if(name==='test-motion'){speak('こんにちは。こんな感じでお話しするよ。よろしくね。');broadcast({greeting:true});}
  else if(name==='reset-bubble'){const b=bubble.getBounds();bubble.setBounds(popupBounds(mascot.getBounds(),b.width,b.height,area(),'bubble'),false);rememberPosition(bubble,'bubble');positionPopups();}
  else if(name==='control'||name==='settings')showControl('settings');else if(name==='history')showControl('chat');else if(name==='talk')showInput();
  else if(name==='menu')menu().popup({window:mascot});else if(name==='pass')setPass(!pass);else if(name==='hide')hideMascot();
