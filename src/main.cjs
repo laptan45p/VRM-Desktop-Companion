@@ -1,15 +1,16 @@
 'use strict';
 const motionFiles=require('./vrma-files.cjs');
+const {ApiKeys}=require('./api-keys.cjs');
 const {VoiceLane,checkEmbedding}=require('./tts.cjs');
 const {ReactionCounter}=require('./interaction.cjs');
 const reactions=new ReactionCounter();
 const {TouchResponder}=require('./touch-response.cjs');
-const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,screen}=require('electron');
+const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,screen,safeStorage}=require('electron');
 const fs=require('node:fs/promises'),path=require('node:path');
 const {mascotBounds,popupBounds,restoreInputBounds}=require('./layout.cjs');
-const {Store,cleanSettings,listModels,chat,touchReply}=require('./backend.cjs');
-let store,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null,voiceId=0,voiceAwaiting=null,voiceStatus='';
-const touchResponses=new TouchResponder({generate:touchReply,publish:(text,reaction)=>{speak(text,{touch:true});broadcast({reaction});}});
+const {Store,cleanSettings,listModels,chat,touchReply,isCloud,llmBase}=require('./backend.cjs');
+let store,keys,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null,voiceId=0,voiceAwaiting=null,voiceStatus='';
+const touchResponses=new TouchResponder({generate:(s,h,r,signal)=>touchReply(s,h,r,signal,{apiKey:credentials(s)}),publish:(text,reaction)=>{speak(text,{touch:true});broadcast({reaction});}});
 const voiceLane=new VoiceLane({publish:audio=>{
  if(audio.id!==voiceId)return;voiceAwaiting=audio.id;clearTimeout(speechTimer);voiceStatus='音声の再生準備中…';broadcast({voiceStatus});
  mascot.webContents.send('update',{voiceAudio:audio});
@@ -26,6 +27,7 @@ function finishVoice(id,phase,error=''){
  broadcast({voiceStatus});
 }
 const gotLock=app.requestSingleInstanceLock();if(!gotLock)app.quit();
+function credentials(settings){return isCloud(settings.provider)?keys.get(settings):'';}
 const allWindows=()=>[control,mascot,input,bubble].filter(w=>w&&!w.isDestroyed());
 function result(fn){return async(...args)=>{try{return {ok:true,data:await fn(...args)};}catch(e){return {ok:false,error:e.message};}};}
 function broadcast(extra={}){for(const w of allWindows())w.webContents.send('update',{settings:store.data.settings,history:store.data.history,busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,...extra});}
@@ -88,7 +90,8 @@ async function selectVRM(){
  store.data.settings.modelPath=file;store.save();mascot.show();broadcast({reloadVRM:true});return file;
 }
 if(gotLock)app.whenReady().then(async()=>{
- app.setAppUserModelId('local.vrm.desktop.companion');store=new Store(app.getPath('userData'));
+ app.setAppUserModelId('local.vrm.desktop.companion');store=new Store(app.getPath('userData'));keys=new ApiKeys(app.getPath('userData'),safeStorage);
+ try{keys.load();}catch{startupError='APIキーの保存データを読み込めません。クラウド利用時は登録し直してください。';}
  try{store.load();}catch(e){startupError='保存データを読み込めませんでした。設定を確認してください。';try{await fs.copyFile(store.file,store.file+'.backup-'+Date.now());}catch{}}
  const webPreferences={preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,autoplayPolicy:'no-user-gesture-required'};
  control=new BrowserWindow({width:570,height:850,minWidth:480,minHeight:650,show:false,title:'VRM Desktop Companion — 設定・履歴',backgroundColor:'#f5f5f3',webPreferences});
@@ -123,6 +126,7 @@ function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=
 handle('state',()=>({...store.data,busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus}));
 handle('save',settings=>{
  if(active)throw new Error('生成を停止してから設定を変更してください。');
+ const cleaned=cleanSettings(settings);if(isCloud(cleaned.provider))llmBase(cleaned);
  cancelVoice();touchResponses.cancel();clearTimeout(speechTimer);if(speech)armSpeechTimer();
  store.data.settings=cleanSettings({...settings,speakerPath:store.data.settings.speakerPath,modelPath:store.data.settings.modelPath,motionFolder:store.data.settings.motionFolder,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY,bubbleX:store.data.settings.bubbleX,bubbleY:store.data.settings.bubbleY});store.save();
  for(const w of [mascot,input,bubble])w.setAlwaysOnTop(store.data.settings.topmost);resizeMascot();broadcast();return store.data.settings;
@@ -141,7 +145,10 @@ handle('choose-motions',async()=>{
 },()=>control);
 handle('motion-list',()=>motionFiles.catalog(store.data.settings.motionFolder));
 handle('motion-data',name=>motionFiles.readMotion(store.data.settings.motionFolder,name),()=>mascot);
-handle('models',s=>listModels(cleanSettings(s)));handle('choose-vrm',selectVRM);
+handle('key-status',s=>{s=cleanSettings(s);return {saved:isCloud(s.provider)&&keys.has(s),available:keys.available()};},()=>control);
+handle('key-save',(s,key)=>{if(active)throw new Error('生成を停止してからAPIキーを変更してください。');s=cleanSettings(s);touchResponses.cancel();keys.set(s,key);return {saved:true};},()=>control);
+handle('key-delete',s=>{if(active)throw new Error('生成を停止してからAPIキーを変更してください。');s=cleanSettings(s);touchResponses.cancel();keys.delete(s);return {saved:false};},()=>control);
+handle('models',s=>{s=cleanSettings(s);return listModels(s,{apiKey:credentials(s)});},()=>control);handle('choose-vrm',selectVRM);
 handle('vrm',async()=>{const p=store.data.settings.modelPath;if(!p)return null;if((await fs.stat(p)).size>300*1024*1024)throw new Error('VRMが300MBを超えています。');return new Uint8Array(await fs.readFile(p));});
 handle('touch',(region,gesture)=>{
  if(pass||!store.data.settings.touchEnabled||region==='cloth'&&!store.data.settings.clothDrag||region==='hand'&&!store.data.settings.handDrag)return;
@@ -172,7 +179,7 @@ handle('chat',async text=>{
  if(active)throw new Error('返答を生成中です。');if(typeof text!=='string'||!text.trim()||text.length>8000)throw new Error('メッセージは1〜8000文字で入力してください。');
  const request=new AbortController();active=request;broadcast({mood:'thinking'});speak('うーん、考え中…',{thinking:true});
  try{
-  const answer=await chat({...store.data.settings},store.data.history,text.trim(),request.signal);if(request.signal.aborted)throw new Error('生成を停止しました。');
+  const answer=await chat({...store.data.settings},store.data.history,text.trim(),request.signal,{apiKey:credentials(store.data.settings)});if(request.signal.aborted)throw new Error('生成を停止しました。');
   const previous=store.data.history;store.data.history=[...previous,{role:'user',content:text.trim()},{role:'assistant',content:answer}].slice(-200);
   try{store.save();}catch(e){store.data.history=previous;throw new Error('会話を保存できませんでした: '+e.message);}
   broadcast({reply:answer,mood:'happy'});speak(answer);return answer;

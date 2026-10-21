@@ -1,8 +1,8 @@
 {
   "name": "vrm-desktop-companion",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "private": true,
-  "description": "Local LLM desktop companion prototype for Windows",
+  "description": "Desktop companion with local and cloud LLM support for Windows",
   "main": "src/main.cjs",
   "license": "MIT",
   "scripts": {

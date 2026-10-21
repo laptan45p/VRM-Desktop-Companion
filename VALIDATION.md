@@ -1,6 +1,6 @@
-# Validation — 0.1.17
+# Validation — 0.1.18
 
-95 tests passed after a fresh dependency install and renderer build:
+105 tests passed after a fresh dependency install and renderer build:
 
 - Ollama/LM Studio local request/response, endpoint restrictions, cancellation, failure and history persistence.
 - VRM 0.x/1.0 fixture parsing, pose and expression update, disposal.
@@ -97,3 +97,13 @@ Native Windows visual interaction has not been verified in this environment.
 - Renderer integration covers current/stale audio IDs, waiting before playback, explicit stop, voice settings and saved-settings requirement for testing the voice.
 - Existing model, interaction, orientation, VRMA loop/static pose and UI tests remain passing.
 - Actual Irodori GPU inference with the user's trained embedding, native Windows audio-device output and perceived viseme accuracy remain unverified. No model or embedding is bundled.
+
+## Cloud LLM coverage
+
+- OpenAI and compatible HTTPS endpoint normalization, official-host enforcement, endpoint-scoped key identifiers, loopback-only TTS/local-provider rules.
+- Mocked network verifies bearer auth, model discovery, chat history bounds, completion-token budgets, opt-in reasoning/temperature, compatible API root and token parameter, and OpenAI store:false.
+- Same cloud credential routing for touch reactions; no model, audio or embedding files sent to LLM.
+- Key vault delegates encryption/decryption to safeStorage (tested with deterministic-interface cryptographic test doubles), persists ciphertext separately, reloads, deletes, rejects insecure fallback and malformed keys, and reports unreadable keys generically.
+- IPC tests cover control-only key operations, main-process credential injection, model/chat/touch lanes and absence of secret values in renderer state/events. Renderer tests cover manual model IDs, clearing password fields, editable compatible URLs and switching back to local.
+- API error redaction, no automatic paid-request retry and cancellation.
+- Live cloud requests/billing, real account/model availability and native Windows DPAPI integration were not tested in this environment.
