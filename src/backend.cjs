@@ -60,6 +60,7 @@ function authorization(settings,apiKey){
  return {Authorization:'Bearer '+apiKey};
 }
 async function requestJSON(url, options = {}, timeoutMs = 180000) {
+  if(options.signal?.aborted)throw new Error('生成を停止しました。');
   const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
   try {
     const r = await fetch(url, { ...options, signal, redirect: 'error' });
@@ -81,10 +82,15 @@ async function listModels(settings,{apiKey=''}={}) {
   const r = await requestJSON(base + (settings.provider === 'ollama' ? '/api/tags' : isCloud(settings.provider)?'/models':'/v1/models'), {headers:authorization(settings,apiKey)}, 10000);
   return (settings.provider === 'ollama' ? (r.models || []).map(m => m.name) : (r.data || []).filter(m=>settings.provider!=='openrouter'||(!Array.isArray(m.architecture?.output_modalities)||m.architecture.output_modalities.includes('text'))&&(!Array.isArray(m.architecture?.input_modalities)||m.architecture.input_modalities.includes('text'))).map(m => m.id)).filter(x => typeof x === 'string');
 }
+async function checkNemoChatTemplate(settings,signal){
+  const info=await requestJSON(llmBase(settings)+'/api/show',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:settings.model}),signal},10000);
+  if(typeof info.template!=='string'||!info.template.trim()||/^\s*{{-?\s*\.Prompt\s*-?}}\s*$/.test(info.template))throw new Error('NemoMixの会話用テンプレートが不足しています。install_ollama.batを実行して「2」を選び、導入済みモデル一覧から「vrm-companion-nemomix:12b-q4_K_M」を選択・保存してください。モデル本体の再取得は不要です。');
+}
 async function chat(settings, history, userText, signal, {maxTokens,timeoutMs=180000,systemExtra='',apiKey=''}={}) {
   const base = llmBase(settings),cloud=isCloud(settings.provider);maxTokens??=cloud?settings.cloudMaxTokens:512;
   if (!settings.model.trim()) throw new Error('設定でモデルを取得・選択してください。');
   if (settings.provider === 'ollama' && /(?:[:\-]cloud)(?:$|[:\-])/i.test(settings.model)) throw new Error('ローカル用モデルを選んでください（cloudモデルには対応しません）。');
+  if(settings.provider==='ollama'&&/^(?:hammerai\/nemomix-unleashed:12b-q4_k_m|vrm-companion-nemomix:12b-q4_k_m|nemomix-companion:12b)$/i.test(settings.model))await checkNemoChatTemplate(settings,signal);
   const messages = [{role:'system',content:`あなたの名前は「${settings.name}」です。\n${settings.persona}${systemExtra?"\n"+systemExtra:""}`}, ...history.slice(-settings.historyTurns * 2), {role:'user',content:userText}];
   const ollama = settings.provider === 'ollama';
   const body = {model:settings.model, messages, stream:false, ...(ollama ? {options:{temperature:settings.temperature,num_predict:maxTokens}} : {temperature:settings.temperature,max_tokens:maxTokens})};
@@ -133,4 +139,5 @@ class Store {
   }
 }
 module.exports = {isCloud,llmBase,DEFAULTS, cleanSettings, localBase, requestJSON, listModels, chat, touchReply, Store};
+
 

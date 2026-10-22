@@ -252,3 +252,13 @@ test('renderer announces startup readiness after demo or VRM initialization',asy
  for(const withModel of [false,true]){const b=await boot('mascot',withModel);await new Promise(r=>setImmediate(r));assert.equal(b.calls.filter(c=>c[0]==='mascotReady').length,1);}
  const b=await boot('control');assert.equal(b.calls.filter(c=>c[0]==='mascotReady').length,0);
 });
+
+test('local discovery offers repaired NemoMix without changing an unrelated model or cloud selection',async()=>{
+ const alias='vrm-companion-nemomix:12b-q4_K_M';
+ for(const [provider,current,expected]of [['ollama','HammerAI/nemomix-unleashed:12b-q4_K_M',alias],['ollama','',alias],['ollama','qwen3:8b','qwen3:8b'],['openrouter','cloud/model','cloud/model']]){
+  const {node,calls}=await boot('control',false,null,()=>Promise.resolve({ok:true,data:[alias,current].filter(Boolean)}));
+  node('provider').value=provider;node('model').value=current;
+  await node('fetchModels').onclick();assert.equal(node('model').value,expected);
+  assert.equal(calls.filter(c=>c[0]==='save').length,0,'Discovery must not save the choice before user saves settings.');
+ }
+});

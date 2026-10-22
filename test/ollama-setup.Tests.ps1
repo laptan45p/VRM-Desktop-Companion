@@ -66,3 +66,50 @@ try {
 } finally { $source.Dispose(); $target.Dispose(); Remove-Item Function:\Write-Host }
 Write-Host 'Download streaming and progress tests passed.'
 $global:LASTEXITCODE = 0
+
+
+
+# Model configuration uses a fake local API: no network, downloads, or GPU.
+$infos = @{}
+$createdModels = New-Object System.Collections.Generic.List[object]
+$failCreate = $false
+function Invoke-OllamaSetupApi([string]$Path, $Payload, [switch]$AllowMissing) {
+    if ($Path -eq 'show') {
+        if ($infos.ContainsKey($Payload.model)) { return $infos[$Payload.model] }
+        if ($AllowMissing) { return $null }
+        throw 'test model missing'
+    }
+    if ($Path -eq 'create') {
+        $createdModels.Add($Payload)
+        if ($failCreate) { throw 'test create failed' }
+        $infos[$Payload.model] = @{ template = $Payload.template; modelfile = $infos[$Payload.from].modelfile }
+        return @{ status = 'success' }
+    }
+    throw 'Unexpected API path'
+}
+$sourceName = $Models[1].Name
+$infos[$sourceName] = @{ template = '{{ .Prompt }}'; modelfile = 'FROM /fake/blobs/sha256-original' }
+$fixedName = Ensure-OllamaChatModel $Models[1]
+Assert-Test ($fixedName -eq $NemoChatModel -and $createdModels.Count -eq 1) 'Raw NemoMix must create a separate chat model.'
+Assert-Test ($infos[$sourceName].template -eq '{{ .Prompt }}') 'Do not overwrite the source model.'
+$payload = $createdModels[0]
+Assert-Test ($payload.from -eq $sourceName -and $payload.stream -eq $false) 'Create must reuse the installed model and wait for success.'
+Assert-Test ($payload.template.Contains('.Messages') -and $payload.template.Contains('.System') -and $payload.template.Contains('assistant') -and $payload.template.Contains('[INST]')) 'Template must handle persona and conversation history.'
+Assert-Test (($payload.parameters.stop -join ',') -eq '[INST],[/INST],</s>') 'Wrong stop sequences.'
+$fixedName = Ensure-OllamaChatModel $Models[1]
+Assert-Test ($fixedName -eq $NemoChatModel -and $createdModels.Count -eq 1) 'Repeat setup must reuse the verified chat model.'
+$infos[$sourceName].template = '[INST]{{ .Prompt }}[/INST]'
+Assert-Test ((Ensure-OllamaChatModel $Models[1]) -eq $sourceName -and $createdModels.Count -eq 1) 'Already configured source models must be preserved.'
+$infos[$sourceName].template = '{{ .Prompt }}'
+$infos[$NemoChatModel].modelfile = 'FROM /fake/blobs/sha256-unrelated'
+$failed = $false
+try { Ensure-OllamaChatModel $Models[1] | Out-Null } catch { $failed = $true }
+Assert-Test ($failed -and $createdModels.Count -eq 1) 'Do not overwrite an unrelated model with the reserved name.'
+$infos.Remove($NemoChatModel)
+$failCreate = $true; $failed = $false
+try { Ensure-OllamaChatModel $Models[1] | Out-Null } catch { $failed = $true }
+Assert-Test ($failed -and -not $infos.ContainsKey($NemoChatModel)) 'Create failure must not report a usable model.'
+$infos[$Models[0].Name] = @{ template = '<|im_start|>{{ .Prompt }}<|im_end|>'; modelfile = 'FROM /fake/qwen' }
+Assert-Test ((Ensure-OllamaChatModel $Models[0]) -eq $Models[0].Name) 'Valid Qwen must not be modified.'
+Write-Host 'Automatic chat model configuration tests passed.'
+$global:LASTEXITCODE = 0

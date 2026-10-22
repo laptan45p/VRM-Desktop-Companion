@@ -138,6 +138,62 @@ function Install-OllamaModel([string]$Exe, $Model) {
     & $Exe show $Model.Name *> $null
     if ($LASTEXITCODE -ne 0) { throw 'モデルを確認できません。再実行してください。' }
 }
+$NemoChatModel = 'vrm-companion-nemomix:12b-q4_K_M'
+$NemoChatTemplate = @'
+{{- $system := .System -}}
+{{- range .Messages }}
+{{- if eq .Role "system" }}{{- $system = .Content -}}
+{{- else if eq .Role "user" }}[INST]{{ if $system }}{{ $system }}
+
+{{ $system = "" }}{{ end }}{{ .Content }}[/INST]
+{{- else if eq .Role "assistant" }} {{ .Content }}</s>
+{{- end }}
+{{- end }}
+'@
+function Invoke-OllamaSetupApi([string]$Path, $Payload, [switch]$AllowMissing) {
+    try {
+        $json = $Payload | ConvertTo-Json -Depth 10 -Compress
+        $result = Invoke-RestMethod -Uri ('http://127.0.0.1:11434/api/' + $Path) -Method Post -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($json)) -TimeoutSec 120
+        if ($result.error) { throw ([string]$result.error) }
+        return $result
+    } catch {
+        if ($AllowMissing -and $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) { return $null }
+        throw
+    }
+}
+function Test-SetupChatTemplate([string]$Template) {
+    return -not ([string]::IsNullOrWhiteSpace($Template) -or $Template -match '^\s*{{-?\s*\.Prompt\s*-?}}\s*$')
+}
+function Get-ModelWeightIdentity($Info) {
+    if ([string]$Info.modelfile -match '(?im)^FROM\s+(.+)$') { return $Matches[1].Trim() }
+    return ''
+}
+function Ensure-OllamaChatModel($Model) {
+    $source = Invoke-OllamaSetupApi 'show' @{ model = $Model.Name }
+    if (Test-SetupChatTemplate $source.template) { return $Model.Name }
+    if ($Model.Name -ne 'HammerAI/nemomix-unleashed:12b-q4_K_M') {
+        throw '会話用テンプレートを確認できませんでした。準備は未完了です。モデル名とログを確認してください。'
+    }
+    $sourceWeight = Get-ModelWeightIdentity $source
+    if (-not $sourceWeight) { throw 'モデル本体の識別情報を確認できないため、会話用モデルの作成を中止しました。' }
+    $existing = Invoke-OllamaSetupApi 'show' @{ model = $NemoChatModel } -AllowMissing
+    if ($existing) {
+        if ((Get-ModelWeightIdentity $existing) -ne $sourceWeight) { throw "別のモデルが $NemoChatModel という名前で登録されています。上書きせず中止しました。" }
+        if (Test-SetupChatTemplate $existing.template) {
+            Write-Host '設定済みの会話用モデルを再利用します。'
+            return $NemoChatModel
+        }
+    }
+    Write-Host 'NemoMixに会話用の設定を追加します。本体の再ダウンロードはありません。'
+    $created = Invoke-OllamaSetupApi 'create' @{
+        model = $NemoChatModel; from = $Model.Name; template = $NemoChatTemplate
+        parameters = @{ stop = @('[INST]', '[/INST]', '</s>') }; stream = $false
+    }
+    if ($created.status -ne 'success') { throw '会話用モデルの作成が完了しませんでした。BATを再実行してください。' }
+    $verified = Invoke-OllamaSetupApi 'show' @{ model = $NemoChatModel }
+    if (-not (Test-SetupChatTemplate $verified.template) -or (Get-ModelWeightIdentity $verified) -ne $sourceWeight) { throw '会話用モデルの設定を確認できませんでした。準備は未完了です。' }
+    return $NemoChatModel
+}
 function Start-OllamaSetup {
     # Keep setup local, even when the user's shell targets a remote Ollama server.
     $env:OLLAMA_HOST = '127.0.0.1:11434'
@@ -155,9 +211,10 @@ function Start-OllamaSetup {
     $exe = Ensure-Ollama
     Wait-Ollama $exe
     Install-OllamaModel $exe $model
-    Write-Host '準備完了！Companionの設定で接続方式「Ollama」を選び、モデル一覧を取得してください。' -ForegroundColor Green
+    $chatModel = Ensure-OllamaChatModel $model
+    Write-Host '準備完了！Companionの設定で接続方式「Ollama」を選び、導入済みモデル一覧を取得してください。' -ForegroundColor Green
     Write-Host '接続先：http://127.0.0.1:11434'
-    Write-Host ('モデル：' + $model.Name)
+    Write-Host ('選択するモデル：' + $chatModel)
     Write-Host '既存のCompanionの設定や会話履歴は変更しません。'
 }
 if (-not $DefinitionsOnly) {
@@ -171,3 +228,4 @@ if (-not $DefinitionsOnly) {
     } catch { Write-Host ('エラー：' + $_.Exception.Message) -ForegroundColor Red; exit 1 }
     finally { if ($transcript) { Stop-Transcript | Out-Null } }
 }
+

@@ -77,3 +77,21 @@ test('window positions and monitor layouts migrate, validate and persist indepen
  const s=cleanSettings({mascotX:-4000,mascotY:-2000,controlX:-1200,controlY:25,displayAreas:[{x:-1600,y:0,width:1600,height:900},{x:NaN,y:0,width:1,height:1},{x:0,y:0,width:-1,height:1}]});assert.equal(s.mascotX,-4000);assert.equal(s.controlY,25);assert.equal(s.displayAreas.length,1);assert.equal(cleanSettings({}).mascotX,null);assert.deepEqual(cleanSettings({}).displayAreas,[]);
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'window-positions-'));try{const a=new Store(dir);a.data.settings=s;a.save();const b=new Store(dir);b.load();assert.deepEqual(b.data.settings,s);}finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('NemoMix raw template is detected before generation and valid templates keep history',async()=>{
+ for(const template of ['{{ .Prompt }}',' \n {{- .Prompt -}}\n','', '[INST]{{ .Prompt }}[/INST] {{ .Response }}']){
+  const requests=[];
+  await server(async(req,res)=>{requests.push(req.url);const body=await readBody(req);res.setHeader('Content-Type','application/json');
+   if(req.url==='/api/show'){assert.equal(body.model,'HammerAI/nemomix-unleashed:12b-q4_K_M');res.end(JSON.stringify({template}));return;}
+   assert.equal(req.url,'/api/chat');assert.equal(body.messages.length,4);assert.equal(body.messages[0].role,'system');assert.equal(body.messages[2].content,'前の返答');res.end(JSON.stringify({message:{content:'こんばんは'}}));
+  },async endpoint=>{
+   const settings={...DEFAULTS,endpoint,model:'HammerAI/nemomix-unleashed:12b-q4_K_M'},history=[{role:'user',content:'前の質問'},{role:'assistant',content:'前の返答'}];
+   if(template.startsWith('[INST]')){assert.equal(await chat(settings,history,'こんばんは'),'こんばんは');assert.deepEqual(requests,['/api/show','/api/chat']);}
+   else{await assert.rejects(chat(settings,history,'こんばんは'),/install_ollama\.bat.*vrm-companion-nemomix/);assert.deepEqual(requests,['/api/show']);}
+  });
+ }
+});
+test('NemoMix template inspection respects cancellation',async()=>{
+ await server(()=>{},async endpoint=>{const c=new AbortController();const pending=chat({...DEFAULTS,endpoint,model:'vrm-companion-nemomix:12b-q4_K_M'},[],'hi',c.signal);c.abort();await assert.rejects(pending,/停止/);});
+});

@@ -89,7 +89,8 @@ async function initControl(){
   if(fetchingModels||busy)return;const request=++modelRequest;fetchingModels=true;$('fetchModels').disabled=true;$('fetchModels').textContent='取得中…';status('connectionStatus','モデル一覧を取得中…（最大約10秒）');$('modelListLabel').hidden=true;
   try{
    const models=await call(api.models(settingsFromForm()));if(request!==modelRequest)return;
-   setModels(models,$('model').value,true);dirty=true;status('connectionStatus',models.length?`${models.length}件取得しました。下の一覧から選び、「設定を保存」を押してください。`:cloudProvider($('provider').value)?'一覧が空です。モデルIDを直接入力するか、接続先のモデルを確認してください。':'一覧が空です。接続先に導入済みモデルがありません。Ollamaの場合はinstall_ollama.batでモデルをダウンロードしてから、もう一度取得してください。');
+   let selected=$('model').value;if($('provider').value==='ollama'&&(!selected||/^hammerai\/nemomix-unleashed:12b-q4_k_m$/i.test(selected)))selected=models.find(m=>m.toLowerCase()==='vrm-companion-nemomix:12b-q4_k_m')||selected;
+   setModels(models,selected,true);dirty=true;status('connectionStatus',models.length?`${models.length}件取得しました。下の一覧から選び、「設定を保存」を押してください。`:cloudProvider($('provider').value)?'一覧が空です。モデルIDを直接入力するか、接続先のモデルを確認してください。':'一覧が空です。接続先に導入済みモデルがありません。Ollamaの場合はinstall_ollama.batでモデルをダウンロードしてから、もう一度取得してください。');
   }catch(e){if(request===modelRequest)status('connectionStatus',e.message,true);}
   finally{if(request===modelRequest){fetchingModels=false;$('fetchModels').disabled=busy;$('fetchModels').textContent=modelListButtonText();}}
  };
@@ -422,4 +423,5 @@ api.onUpdate(data=>{
  if(isMascot)initMascot();else if(view==='input')initInput();else if(view==='bubble')initSpeech();else{await initControl();if(state.version)$('appVersion').textContent='v'+state.version;$('companionName').textContent=state.settings.name;$('modelBadge').textContent=state.settings.model||'モデル未選択';}
 }catch(e){if(isMascot)api.modelStatus(e.message);else status(view==='input'?'inputStatus':view==='bubble'?'speechText':'chatStatus',e.message,true);}})();
 })();
+
 
