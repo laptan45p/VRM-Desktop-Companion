@@ -11,11 +11,12 @@ async function boot(view,withModel=false,audioFixture=null,modelFixture=null){
   orientation:angles=>{calls.push(['orientation',angles]);return ok({...settings,...angles});},
   action:name=>{calls.push(['action',name]);return ok();},hit:v=>{calls.push(['hit',v]);return ok();},drag:(...a)=>{calls.push(['drag',...a]);return ok();},bubbleSize:h=>{calls.push(['bubbleSize',h]);return ok();},modelStatus:t=>{calls.push(['modelStatus',t]);return ok();},touch:(...args)=>{calls.push(['touch',...args]);return ok();},vrm:()=>ok(withModel?new Uint8Array(require('./fixture.cjs')()):null),
   send:async text=>{calls.push(['send',text]);if(failSend)return {ok:false,error:'接続できません'};return {ok:true,data:'返事'};},cancel:()=>ok(),models:s=>{calls.push(['models',s]);return modelFixture?modelFixture(s):ok(['test-local']);},save:s=>{calls.push(['save',s]);return ok(s);}};
- class Renderer{constructor(){this.domElement={};}setClearColor(){}setPixelRatio(){}setSize(){}setAnimationLoop(cb){frame=cb;cb();}render(scene,camera){rendered={scene,camera};}}
+ class Renderer{constructor(){this.domElement={};}setClearColor(){}setPixelRatio(value){calls.push(['pixelRatio',value]);}setSize(){}setAnimationLoop(cb){frame=cb;cb();}render(scene,camera){rendered={scene,camera};}}
  let now=0;const context={THREE:{...THREE,Clock:class{getDelta(){return .05;}},WebGLRenderer:Renderer},GLTFLoader:THREE.GLTFLoader,VRMLoaderPlugin:THREE.VRMLoaderPlugin,VRMUtils:THREE.VRMUtils,VRMAnimationLoaderPlugin:THREE.VRMAnimationLoaderPlugin,createVRMAnimationClip:THREE.createVRMAnimationClip,
   window:{AudioContext:class{constructor(){if(!audioFixture)throw new Error('No audio fixture');return audioFixture.ctx;}},companionAudio:require('../src/speech-audio.cjs'),companionVrma:require('../src/vrma-player.cjs'),companion:api,companionLayout:layout,companionOrientation:require('../src/orientation.cjs'),companionPicking:require('../src/picking.cjs'),companionHand:withModel==='hand'?{HandDrag:class{begin(){return true;}move(v){calls.push(['handMove',v.x,v.y,v.z]);}release(){calls.push(['handRelease']);}reset(){}restore(){}update(){}}}:require('../src/hand.cjs'),companionExpressions:{...expressionModule,FaceExpressions:class extends expressionModule.FaceExpressions{constructor(){super();faceControllers.push(this);}}},companionMotion:require('../src/motion.cjs'),companionInteraction:require('../src/interaction.cjs'),companionCloth:withModel==='cloth'?{ClothDrag:class{begin(){return true;}move(v){calls.push(['clothMove',v.x,v.y,v.z]);}release(){calls.push(['clothRelease']);}reset(){calls.push(['clothReset']);}restore(){}update(){}}}:require('../src/cloth.cjs'),addEventListener:(k,f)=>listeners[k]=f},document:{body:{className:'',dataset:{}},documentElement:{classList:{add(){}}},getElementById:node,createElement:()=>node('new-'+nodes.size),createTextNode:text=>({textContent:text}),addEventListener:(k,f)=>events[k]=f},location:{search:'?view='+view},URLSearchParams,
   performance:{now:()=>now+=50},devicePixelRatio:1,ResizeObserver:class{constructor(fn){this.fn=fn;}observe(){}},requestAnimationFrame:fn=>fn(),Option:class{constructor(text,value){this.text=text;this.value=value;}},console,confirm:()=>true};
  const code=fs.readFileSync(path.join(__dirname,'../src/renderer.js'),'utf8').split('\n').filter(l=>!l.startsWith('import ')).join('\n');
+ context.renderQuality=require('../src/render-quality.cjs');
  vm.runInNewContext(code,context);await new Promise(r=>setImmediate(r));
  return {node,calls,notify,listeners,events,rendered,faceControllers,tick:()=>frame?.(),advance:()=>now+=200,setFailure:v=>failSend=v};
 }
@@ -269,4 +270,19 @@ test('VRM changes refresh character fields even with unsaved global settings',as
  notify({settings:{...DEFAULTS,modelPath:'/B.vrm',name:'Bの子',persona:'Bの口調',selfPronoun:'あたし',userAddress:'相棒'},reloadVRM:true});
  for(const [id,value]of Object.entries({name:'Bの子',persona:'Bの口調',selfPronoun:'あたし',userAddress:'相棒'}))assert.equal(node(id).value,value);
  assert.equal(node('endpoint').value,'http://127.0.0.1:11999');await node('settingsForm').onsubmit({preventDefault(){}});const saved=calls.findLast(c=>c[0]==='save')[1];assert.equal(saved.name,'Bの子');assert.equal(saved.selfPronoun,'あたし');assert.equal(saved.userAddress,'相棒');
+});
+
+test('quality form saves and mascot updates resolution without reloading model',async()=>{
+ const control=await boot('control');assert.equal(control.node('renderQuality').value,'high');
+ control.node('renderQuality').value='low';
+ await control.node('settingsForm').onsubmit({preventDefault(){}});
+ assert.equal(control.calls.find(c=>c[0]==='save')[1].renderQuality,'low');
+ const mascot=await boot('mascot',true);
+ assert.equal(mascot.calls.filter(c=>c[0]==='pixelRatio').at(-1)[1],2);
+ const ready=mascot.calls.filter(c=>c[0]==='expressionReady').length;
+ for(const [quality,ratio] of [['medium',1],['low',.75],['high',2]]){
+  mascot.notify({settings:{...DEFAULTS,modelPath:'fixture.vrm',renderQuality:quality}});
+  assert.equal(mascot.calls.filter(c=>c[0]==='pixelRatio').at(-1)[1],ratio);
+ }
+ assert.equal(mascot.calls.filter(c=>c[0]==='expressionReady').length,ready);
 });

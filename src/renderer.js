@@ -1,3 +1,4 @@
+import renderQuality from './render-quality.cjs';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
@@ -12,8 +13,8 @@ function status(id,text,error=false){$(id).textContent=text;$(id).classList.togg
 async function call(promise){const r=await promise;if(!r.ok)throw new Error(r.error);return r.data;}
 function wrap(fn,id='chatStatus'){return async(...args)=>{try{await fn(...args);}catch(e){status(id,e.message,true);}};}
 function selectControlTab(which){const chat=which==='chat';$('chatView').hidden=!chat;$('settingsView').hidden=chat;$('chatTab').classList.toggle('selected',chat);$('settingsTab').classList.toggle('selected',!chat);}
-function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona','selfPronoun','userAddress','bubbleFont','greetingMotion','idleMotion','idleMode','ttsEndpoint','ttsCaption','cloudReasoning','compatibleTokenParam'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose','ttsSpeed','ttsVolume','ttsTimeout','cloudMaxTokens'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled','cloudTemperature'])s[k]=$(k).checked;s.clothReach=Number($('clothReach').value)/100;return s;}
-function fillSettings(s){for(const id of ['provider','endpoint','name','persona','selfPronoun','userAddress','bubbleFont','temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose','ttsSpeed','ttsVolume','ttsTimeout','cloudMaxTokens'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled','cloudTemperature'])$(k).checked=s[k];$('clothReach').value=Math.round(s.clothReach*100);setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';$('motionPath').textContent=s.motionFolder||'モーション未選択';$('ttsEndpoint').value=s.ttsEndpoint;$('ttsCaption').value=s.ttsCaption;$('speakerPath').textContent=s.speakerPath||'Speaker Embedding未選択';$('idleMode').value=s.idleMode;setMotionOptions(motionNames,s.greetingMotion,s.idleMotion);$('cloudReasoning').value=s.cloudReasoning;$('compatibleTokenParam').value=s.compatibleTokenParam;updateProviderUI();}
+function settingsFromForm(){const s={...state.settings};for(const id of ['renderQuality','provider','endpoint','model','name','persona','selfPronoun','userAddress','bubbleFont','greetingMotion','idleMotion','idleMode','ttsEndpoint','ttsCaption','cloudReasoning','compatibleTokenParam'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose','ttsSpeed','ttsVolume','ttsTimeout','cloudMaxTokens'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled','cloudTemperature'])s[k]=$(k).checked;s.clothReach=Number($('clothReach').value)/100;return s;}
+function fillSettings(s){for(const id of ['renderQuality','provider','endpoint','name','persona','selfPronoun','userAddress','bubbleFont','temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose','ttsSpeed','ttsVolume','ttsTimeout','cloudMaxTokens'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled','cloudTemperature'])$(k).checked=s[k];$('clothReach').value=Math.round(s.clothReach*100);setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';$('motionPath').textContent=s.motionFolder||'モーション未選択';$('ttsEndpoint').value=s.ttsEndpoint;$('ttsCaption').value=s.ttsCaption;$('speakerPath').textContent=s.speakerPath||'Speaker Embedding未選択';$('idleMode').value=s.idleMode;setMotionOptions(motionNames,s.greetingMotion,s.idleMotion);$('cloudReasoning').value=s.cloudReasoning;$('compatibleTokenParam').value=s.compatibleTokenParam;updateProviderUI();}
 let motionNames=[];
 let expressionPath='',expressionNames=[],expressionRequest=0;
 function setExpressionOptions(names,modelPath){
@@ -195,8 +196,8 @@ function fitModel(root){
 function resizeViewport(){
  if(!renderer)return;
  const el=$('avatar'),width=Math.max(1,el.clientWidth),height=Math.max(1,el.clientHeight);
- // Keep very large windows within an eight-megapixel rendering budget.
- renderer.setPixelRatio(Math.min(devicePixelRatio,1.5,Math.sqrt(8000000/(width*height))));
+ // Supersample High, while bounding framebuffer area and dimensions.
+ renderer.setPixelRatio(renderQuality.pixelRatio(state.settings.renderQuality,width,height,devicePixelRatio,renderer.capabilities?.maxTextureSize));
  renderer.setSize(width,height,false);camera.aspect=width/height;
  fitModel(vrm?.scene||demoRoot);
 }
@@ -402,7 +403,7 @@ api.onUpdate(data=>{
   if(data.reloadVRM)loadVRM(true);
   if(data.settings)cloth?.configure?.(state.settings);
   if(data.pass||data.settings&&(before.handDrag!==state.settings.handDrag||before.clothDrag!==state.settings.clothDrag||before.clothReach!==state.settings.clothReach||before.clothAngle!==state.settings.clothAngle||rotationChanged||before.scale!==state.settings.scale)){if(interacting||data.pass||rotationChanged||before.scale===state.settings.scale)cancelInteraction();cloth?.reset();hands?.reset();}
-  if(renderer&&(before.scale!==state.settings.scale||rotationChanged))resizeViewport();
+  if(renderer&&(before.scale!==state.settings.scale||rotationChanged||before.renderQuality!==state.settings.renderQuality))resizeViewport();
  }else if(view==='input'){
   if(data.reply||data.reloadVRM)pendingText='';renderHistory('inputHistory');
   $('inputName').textContent=state.settings.name+'に話しかける';setInputBusy();if(data.focusInput)focusInput();

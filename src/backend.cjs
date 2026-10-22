@@ -3,13 +3,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const voices=require('./voice-bindings.cjs');
 const characters=require('./character-bindings.cjs');
+const {cleanQuality}=require('./render-quality.cjs');
 const DEFAULTS = {
+  renderQuality: 'high',
   cloudMaxTokens: 1024, cloudReasoning: 'auto', cloudTemperature: false, compatibleTokenParam: 'max_tokens', provider: 'ollama', endpoint: 'http://127.0.0.1:11434', model: '',
   name: 'コンパニオン', selfPronoun: '', userAddress: '', persona: 'あなたはデスクトップに住む親しみやすい相棒です。日本語で自然に会話してください。返答は基本的に短く、相手の話をよく聞いてください。',
   temperature: 0.7, historyTurns: 12, ttsEnabled: false, ttsEndpoint: 'http://127.0.0.1:8088', speakerPath: '', ttsCaption: '', ttsSpeed: 1, ttsVolume: .8, ttsTimeout: 300, modelPath: '', motionFolder: '', greetingMotion: 'VRMA_02.vrma', randomMotion: true, motionInterval: 60, idleMotion: '', idleMode: 'loop', idleSpeed: 1, idlePose: 50, scale: 1, angle: 0, angleX: 0, angleY: 0, angleZ: 0, topmost: true, inputX: null, inputY: null, mascotX: null, mascotY: null, controlX: null, controlY: null, displayAreas: [], lipSync: true, softIdle: true, motionStrength: 0.65, touchEnabled: true, clothDrag: true, handDrag: true, clothReach: .18, clothAngle: 80, touchZoneScale: 1, bubbleX: null, bubbleY: null, bubbleFont: 'Yu Gothic UI', bubbleFontSize: 13,
 };
 function cleanSettings(input = {}) {
   const s = { ...DEFAULTS };
+  s.renderQuality=cleanQuality(input.renderQuality);
   for (const k of ['provider','endpoint','model','name','persona','modelPath','bubbleFont','motionFolder','greetingMotion','idleMotion','ttsEndpoint','speakerPath','ttsCaption']) if (typeof input[k] === 'string') s[k] = input[k].slice(0, k === 'persona' ? 12000 : 2000);
   for(const k of ['selfPronoun','userAddress'])if(typeof input[k]==='string')s[k]=input[k].trim().slice(0,100);
   if (!['ollama', 'lmstudio','openai','openrouter','compatible'].includes(s.provider)) throw new Error('接続方式を選んでください。');

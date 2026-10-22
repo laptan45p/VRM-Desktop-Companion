@@ -198,3 +198,10 @@ TTS用Windows補助スクリプトの基本動作テストでは、Git・uv・GP
 - 配布用3種ZIPの検査でinstall_ollama.bat、llm-tools/ollama_setup.ps1、OLLAMA_SETUP.mdの同梱、BATのCRLF、PowerShellのUTF-8 BOMを確認。
 - test/ollama-setup.Tests.ps1にVRAM判定、導入済みモデルの再利用、通常取得、Hugging Faceへの切り替えと別名登録、通信エラー時の停止を追加。Windows CIに組み込み済みですが、この変更時点では未実行。
 - Windows実機でのOllamaインストーラー起動、モデルの実ダウンロード、GPU推論は未確認。
+
+
+## 0.1.42 描画品質
+
+- ローカルのビルドとNodeテスト184件が成功。
+- High/Medium/Lowの倍率、DPI、大きな表示・GPU寸法制限、保存と再読み込み、設定画面からの保存、モデルを再読み込みせず反映する動作を検証。
+- GPUを使う実表示の比較とWindows実機での画質・負荷は未確認。
