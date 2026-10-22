@@ -1,3 +1,4 @@
+import unlit from './unlit-materials.cjs';
 import renderQuality from './render-quality.cjs';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -9,6 +10,7 @@ const view=new URLSearchParams(location.search).get('view')||'control',isMascot=
 document.body.className=view;document.documentElement.classList.add(view+'-root');
 $({control:'control',mascot:'mascot',input:'inputPanel',bubble:'speechPanel'}[view]).hidden=false;
 let state,dirty=false,pendingText='',busy=false,fetchingModels=false,modelRequest=0;
+const unlitMaterials=new unlit.UnlitMaterials(m=>new THREE.MeshBasicMaterial({name:m.name+' (陰影なし)',color:m.color.clone(),map:m.map,alphaMap:m.alphaMap||null,opacity:m.opacity,transparent:m.transparent,alphaTest:m.alphaTest,side:m.side,depthWrite:m.depthWrite,depthTest:m.depthTest,vertexColors:m.vertexColors,toneMapped:false}));
 function status(id,text,error=false){$(id).textContent=text;$(id).classList.toggle('error',error);}
 async function call(promise){const r=await promise;if(!r.ok)throw new Error(r.error);return r.data;}
 function wrap(fn,id='chatStatus'){return async(...args)=>{try{await fn(...args);}catch(e){status(id,e.message,true);}};}
@@ -225,7 +227,7 @@ async function loadVRM(announce=false){
  // Disable static bounds culling on animated meshes.
  candidate.scene.traverse(o=>{if(o.isMesh)o.frustumCulled=false;});
  cloth?.reset();hands?.reset();
- disposeRoot(modelRoot);disposeRoot(demoRoot);demoRoot=null;vrm=candidate;modelRoot=vrm.scene;scene.add(modelRoot);
+ unlitMaterials.clear();disposeRoot(modelRoot);disposeRoot(demoRoot);demoRoot=null;vrm=candidate;modelRoot=vrm.scene;scene.add(modelRoot);unlitMaterials.bind(modelRoot);
  faces.bind(vrm);api.expressionReady(state.settings.modelPath,faces.names);
  rest=window.companionMotion.capturePose(vrm);lips.stop();cloth=new window.companionCloth.ClothDrag(vrm,THREE.Vector3,state.settings);hands=new window.companionHand.HandDrag(vrm,THREE.Vector3);
  applyOrientation(modelRoot);fitModel(modelRoot);loadMotions();
@@ -261,6 +263,7 @@ function initMascot(){
  vrm.update(dt);
  cloth?.update(dt);
  }
+ if(vrm)unlitMaterials.apply();
  renderer.render(scene,camera);
  });
 }

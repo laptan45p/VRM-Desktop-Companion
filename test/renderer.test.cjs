@@ -16,7 +16,7 @@ async function boot(view,withModel=false,audioFixture=null,modelFixture=null){
   window:{AudioContext:class{constructor(){if(!audioFixture)throw new Error('No audio fixture');return audioFixture.ctx;}},companionAudio:require('../src/speech-audio.cjs'),companionVrma:require('../src/vrma-player.cjs'),companion:api,companionLayout:layout,companionOrientation:require('../src/orientation.cjs'),companionPicking:require('../src/picking.cjs'),companionHand:withModel==='hand'?{HandDrag:class{begin(){return true;}move(v){calls.push(['handMove',v.x,v.y,v.z]);}release(){calls.push(['handRelease']);}reset(){}restore(){}update(){}}}:require('../src/hand.cjs'),companionExpressions:{...expressionModule,FaceExpressions:class extends expressionModule.FaceExpressions{constructor(){super();faceControllers.push(this);}}},companionMotion:require('../src/motion.cjs'),companionInteraction:require('../src/interaction.cjs'),companionCloth:withModel==='cloth'?{ClothDrag:class{begin(){return true;}move(v){calls.push(['clothMove',v.x,v.y,v.z]);}release(){calls.push(['clothRelease']);}reset(){calls.push(['clothReset']);}restore(){}update(){}}}:require('../src/cloth.cjs'),addEventListener:(k,f)=>listeners[k]=f},document:{body:{className:'',dataset:{}},documentElement:{classList:{add(){}}},getElementById:node,createElement:()=>node('new-'+nodes.size),createTextNode:text=>({textContent:text}),addEventListener:(k,f)=>events[k]=f},location:{search:'?view='+view},URLSearchParams,
   performance:{now:()=>now+=50},devicePixelRatio:1,ResizeObserver:class{constructor(fn){this.fn=fn;}observe(){}},requestAnimationFrame:fn=>fn(),Option:class{constructor(text,value){this.text=text;this.value=value;}},console,confirm:()=>true};
  const code=fs.readFileSync(path.join(__dirname,'../src/renderer.js'),'utf8').split('\n').filter(l=>!l.startsWith('import ')).join('\n');
- context.renderQuality=require('../src/render-quality.cjs');
+ context.renderQuality=require('../src/render-quality.cjs');context.unlit=require('../src/unlit-materials.cjs');
  vm.runInNewContext(code,context);await new Promise(r=>setImmediate(r));
  return {node,calls,notify,listeners,events,rendered,faceControllers,tick:()=>frame?.(),advance:()=>now+=200,setFailure:v=>failSend=v};
 }
@@ -275,4 +275,11 @@ test('VRM changes refresh character fields even with unsaved global settings',as
 test('mascot always renders with high resolution',async()=>{
  const mascot=await boot('mascot',true);
  assert.equal(mascot.calls.filter(c=>c[0]==='pixelRatio').at(-1)[1],2);
+});
+
+
+test('fixed unlit renderer starts and model settings updates need no shading controls',async()=>{
+ const m=await boot('mascot',true);assert.ok(m.rendered);assert.ok(!m.calls.some(x=>x[0]==='modelStatus'));
+ m.notify({settings:{...DEFAULTS,shadeMode:'original',shadeScope:'front'}});m.tick();
+ assert.ok(m.rendered.scene);const c=await boot('control');assert.equal(c.node('name').value,DEFAULTS.name);
 });
