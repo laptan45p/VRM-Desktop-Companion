@@ -2,14 +2,16 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const voices=require('./voice-bindings.cjs');
+const characters=require('./character-bindings.cjs');
 const DEFAULTS = {
   cloudMaxTokens: 1024, cloudReasoning: 'auto', cloudTemperature: false, compatibleTokenParam: 'max_tokens', provider: 'ollama', endpoint: 'http://127.0.0.1:11434', model: '',
-  name: 'コンパニオン', persona: 'あなたはデスクトップに住む親しみやすい相棒です。日本語で自然に会話してください。返答は基本的に短く、相手の話をよく聞いてください。',
+  name: 'コンパニオン', selfPronoun: '', userAddress: '', persona: 'あなたはデスクトップに住む親しみやすい相棒です。日本語で自然に会話してください。返答は基本的に短く、相手の話をよく聞いてください。',
   temperature: 0.7, historyTurns: 12, ttsEnabled: false, ttsEndpoint: 'http://127.0.0.1:8088', speakerPath: '', ttsCaption: '', ttsSpeed: 1, ttsVolume: .8, ttsTimeout: 300, modelPath: '', motionFolder: '', greetingMotion: 'VRMA_02.vrma', randomMotion: true, motionInterval: 60, idleMotion: '', idleMode: 'loop', idleSpeed: 1, idlePose: 50, scale: 1, angle: 0, angleX: 0, angleY: 0, angleZ: 0, topmost: true, inputX: null, inputY: null, mascotX: null, mascotY: null, controlX: null, controlY: null, displayAreas: [], lipSync: true, softIdle: true, motionStrength: 0.65, touchEnabled: true, clothDrag: true, handDrag: true, clothReach: .18, clothAngle: 80, touchZoneScale: 1, bubbleX: null, bubbleY: null, bubbleFont: 'Yu Gothic UI', bubbleFontSize: 13,
 };
 function cleanSettings(input = {}) {
   const s = { ...DEFAULTS };
   for (const k of ['provider','endpoint','model','name','persona','modelPath','bubbleFont','motionFolder','greetingMotion','idleMotion','ttsEndpoint','speakerPath','ttsCaption']) if (typeof input[k] === 'string') s[k] = input[k].slice(0, k === 'persona' ? 12000 : 2000);
+  for(const k of ['selfPronoun','userAddress'])if(typeof input[k]==='string')s[k]=input[k].trim().slice(0,100);
   if (!['ollama', 'lmstudio','openai','openrouter','compatible'].includes(s.provider)) throw new Error('接続方式を選んでください。');
   if(s.provider==='openrouter')s.endpoint='https://openrouter.ai/api/v1';
   if(s.provider==='openai'&&!s.model.trim())s.model='gpt-6-luna';
@@ -91,7 +93,7 @@ async function chat(settings, history, userText, signal, {maxTokens,timeoutMs=18
   if (!settings.model.trim()) throw new Error('設定でモデルを取得・選択してください。');
   if (settings.provider === 'ollama' && /(?:[:\-]cloud)(?:$|[:\-])/i.test(settings.model)) throw new Error('ローカル用モデルを選んでください（cloudモデルには対応しません）。');
   if(settings.provider==='ollama'&&/^(?:hammerai\/nemomix-unleashed:12b-q4_k_m|vrm-companion-nemomix:12b-q4_k_m|nemomix-companion:12b)$/i.test(settings.model))await checkNemoChatTemplate(settings,signal);
-  const messages = [{role:'system',content:`あなたの名前は「${settings.name}」です。\n${settings.persona}${systemExtra?"\n"+systemExtra:""}`}, ...history.slice(-settings.historyTurns * 2), {role:'user',content:userText}];
+  const messages = [{role:'system',content:`あなたの名前は「${settings.name}」です。\n${settings.persona}${settings.selfPronoun?'\n自分を指す一人称は「'+settings.selfPronoun+'」を使ってください。':''}${settings.userAddress?'\n会話相手に呼びかける際は「'+settings.userAddress+'」と呼んでください。毎回呼びかける必要はありません。':''}${systemExtra?"\n"+systemExtra:""}`}, ...history.slice(-settings.historyTurns * 2), {role:'user',content:userText}];
   const ollama = settings.provider === 'ollama';
   const body = {model:settings.model, messages, stream:false, ...(ollama ? {options:{temperature:settings.temperature,num_predict:maxTokens}} : {temperature:settings.temperature,max_tokens:maxTokens})};
   if(cloud){
@@ -120,7 +122,7 @@ async function touchReply(settings,history,reaction,signal,{apiKey='',relationsh
  return answer.slice(0,160);
 }
 class Store {
-  constructor(dir) { this.file = path.join(dir, 'companion.json'); this.data = {settings:{...DEFAULTS},history:[],voiceBindings:[],relationships:require('./relationship.cjs').clean(null,DEFAULTS.name)}; }
+  constructor(dir) { this.file = path.join(dir, 'companion.json'); this.data = {settings:{...DEFAULTS},history:[],characterBindings:[],voiceBindings:[],relationships:require('./relationship.cjs').clean(null,DEFAULTS.name)}; }
   load() {
     if (!fs.existsSync(this.file)) return;
     const raw = JSON.parse(fs.readFileSync(this.file, 'utf8'));
@@ -132,12 +134,15 @@ class Store {
     this.data.history=history.slice(-200);
     this.data.relationships=require('./relationship.cjs').clean(raw.relationships,this.data.settings.name);
     this.data.voiceBindings=raw.voiceBindings;voices.initialize(this.data);
+    this.data.characterBindings=raw.characterBindings;characters.initialize(this.data);
   }
   save() {
+    characters.bind(this.data,this.data.settings.modelPath,this.data.settings);
     fs.mkdirSync(path.dirname(this.file),{recursive:true});
     const tmp=this.file+'.tmp'; fs.writeFileSync(tmp, JSON.stringify(this.data,null,2),'utf8'); fs.renameSync(tmp,this.file);
   }
 }
 module.exports = {isCloud,llmBase,DEFAULTS, cleanSettings, localBase, requestJSON, listModels, chat, touchReply, Store};
+
 
 

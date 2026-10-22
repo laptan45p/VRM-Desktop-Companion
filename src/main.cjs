@@ -1,5 +1,6 @@
 'use strict';
 const voices=require('./voice-bindings.cjs');
+const characters=require('./character-bindings.cjs');
 const {farewell,greeting}=require('./farewell.cjs');
 const relationship=require('./relationship.cjs');
 const motionFiles=require('./vrma-files.cjs');
@@ -21,7 +22,7 @@ const {TouchResponder}=require('./touch-response.cjs');
 const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,screen,safeStorage}=require('electron');
 const fs=require('node:fs/promises'),path=require('node:path');
 const {mascotBounds,popupBounds,clampPosition,restoreInputBounds,restoreMascotBounds}=require('./layout.cjs');
-const {Store,cleanSettings,listModels,chat,touchReply,isCloud,llmBase}=require('./backend.cjs');
+const {Store,cleanSettings,listModels,chat,touchReply,isCloud,llmBase,DEFAULTS}=require('./backend.cjs');
 let store,keys,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null,voiceId=0,voiceAwaiting=null,voiceStatus='',wheelAnchor=null,displayLayout=null,topmostInterval=null;
 const touchResponses=new TouchResponder({generate:(s,h,r,signal)=>touchReply(s,h,r,signal,{apiKey:credentials(s),relationshipContext:relationship.context(relationship.current(store.data.relationships))}),publish:(text,reaction)=>{speak(text,{touch:true});broadcast({reaction});}});
 const voiceLane=new VoiceLane({publish:audio=>{
@@ -151,14 +152,14 @@ async function selectVRM(){
  if(active)throw new Error('生成を停止してからVRMを変更してください。');
  cancelVoice();touchResponses.cancel();reactions.reset();
  const previous=structuredClone(store.data);
- store.data.history=relationship.forModel(store.data.relationships,file,path.basename(file,path.extname(file)),store.data.history);store.data.settings.modelPath=file;store.data.settings.speakerPath=voices.lookup(store.data,file);
+ store.data.history=relationship.forModel(store.data.relationships,file,path.basename(file,path.extname(file)),store.data.history);characters.activate(store.data,file,DEFAULTS);store.data.settings.speakerPath=voices.lookup(store.data,file);
  try{store.save();}catch(e){store.data=previous;throw e;}expressionNames=[];mascot.show();broadcast({reloadVRM:true,expressionNames});return file;
 }
 if(gotLock)app.whenReady().then(async()=>{
  app.setAppUserModelId('local.vrm.desktop.companion');store=new Store(app.getPath('userData'));keys=new ApiKeys(app.getPath('userData'),safeStorage);
  try{keys.load();}catch{startupError='APIキーの保存データを読み込めません。クラウド利用時は登録し直してください。';}
  try{store.load();}catch(e){startupError='保存データを読み込めませんでした。設定を確認してください。';try{await fs.copyFile(store.file,store.file+'.backup-'+Date.now());}catch{}}
- voices.initialize(store.data);
+ voices.initialize(store.data);characters.initialize(store.data);
  store.data.relationships=relationship.clean(store.data.relationships,store.data.settings.name);
  if(store.data.settings.modelPath&&!store.data.relationships.bindings.length)relationship.select(store.data.relationships,store.data.relationships.active,store.data.settings.modelPath,store.data.history);
  const webPreferences={preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,autoplayPolicy:'no-user-gesture-required'};
@@ -204,12 +205,14 @@ app.on('before-quit',()=>{
 });
 app.on('will-quit',()=>globalShortcut.unregisterAll());app.on('window-all-closed',()=>app.quit());
 function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=>{if(!allWindows().some(w=>w.webContents===e.sender)||only&&e.sender!==only()?.webContents)throw new Error('不明なウィンドウです。');if(goodbye&&!['state','voice-state','model-status','hit','bubble-size'].includes(channel)&&!(channel==='action'&&['quit','stop-voice','close-bubble'].includes(args[0])))throw new Error('終了の挨拶中です。');return fn(...args);}));}
-handle('state',()=>({...store.data,version:app.getVersion?.()||'',relationships:undefined,voiceBindings:undefined,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus}));
+handle('state',()=>({...store.data,version:app.getVersion?.()||'',relationships:undefined,voiceBindings:undefined,characterBindings:undefined,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus}));
 handle('save',settings=>{
  if(active)throw new Error('生成を停止してから設定を変更してください。');
  const cleaned=cleanSettings(settings);if(isCloud(cleaned.provider))llmBase(cleaned);
  cancelVoice();touchResponses.cancel();clearTimeout(speechTimer);if(speech)armSpeechTimer();
- store.data.settings=cleanSettings({...settings,speakerPath:store.data.settings.speakerPath,modelPath:store.data.settings.modelPath,motionFolder:store.data.settings.motionFolder,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY,bubbleX:store.data.settings.bubbleX,bubbleY:store.data.settings.bubbleY,mascotX:store.data.settings.mascotX,mascotY:store.data.settings.mascotY,controlX:store.data.settings.controlX,controlY:store.data.settings.controlY,displayAreas:store.data.settings.displayAreas});store.save();
+ const previous=structuredClone(store.data);
+ store.data.settings=cleanSettings({...settings,speakerPath:store.data.settings.speakerPath,modelPath:store.data.settings.modelPath,motionFolder:store.data.settings.motionFolder,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY,bubbleX:store.data.settings.bubbleX,bubbleY:store.data.settings.bubbleY,mascotX:store.data.settings.mascotX,mascotY:store.data.settings.mascotY,controlX:store.data.settings.controlX,controlY:store.data.settings.controlY,displayAreas:store.data.settings.displayAreas});characters.bind(store.data,store.data.settings.modelPath,store.data.settings);
+ try{store.save();}catch(e){store.data=previous;throw e;}
  applyTopmost();resizeMascot();broadcast();return store.data.settings;
 });
 handle('choose-speaker',async()=>{
@@ -327,4 +330,5 @@ handle('action',name=>{
  else if(name==='menu')menu().popup({window:mascot});else if(name==='pass')setPass(!pass);else if(name==='hide')hideMascot();
  else if(name==='close-input')input.hide();else if(name==='close-bubble'){if(goodbye){cancelVoice();scheduleGoodbyeExit(700);}else hideSpeech();}else if(name==='quit')requestQuit();else if(name==='reset')resetMascot();
 });
+
 

@@ -95,3 +95,12 @@ test('NemoMix raw template is detected before generation and valid templates kee
 test('NemoMix template inspection respects cancellation',async()=>{
  await server(()=>{},async endpoint=>{const c=new AbortController();const pending=chat({...DEFAULTS,endpoint,model:'vrm-companion-nemomix:12b-q4_K_M'},[],'hi',c.signal);c.abort();await assert.rejects(pending,/停止/);});
 });
+
+
+test('character addressing is optional, bounded and included in conversation system instructions',async()=>{
+ assert.equal(cleanSettings({selfPronoun:' 僕 ',userAddress:' 先輩 '}).selfPronoun,'僕');assert.equal(cleanSettings({userAddress:'a'.repeat(150)}).userAddress.length,100);
+ for(const fields of [{selfPronoun:'僕',userAddress:'先輩'},{selfPronoun:'',userAddress:''}])await server(async(req,res)=>{const b=await readBody(req),system=b.messages[0].content;
+  if(fields.selfPronoun){assert.match(system,/一人称は「僕」/);assert.match(system,/「先輩」と呼んで/);}else{assert.ok(!system.includes('一人称は'));assert.ok(!system.includes('会話相手に呼びかける際は'));}
+  res.setHeader('Content-Type','application/json');res.end(JSON.stringify({message:{content:'はい'}}));
+ },async endpoint=>{assert.equal(await chat({...DEFAULTS,endpoint,model:'local',...fields},[],'こんにちは'),'はい');});
+});

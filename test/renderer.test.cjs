@@ -111,7 +111,7 @@ test('VRMA controls persist greeting, periodic toggle and interval',async()=>{
 
 test('idle controls save selected file, mode, speed, and pose while preserving drafts',async()=>{
  const {node,calls,notify}=await boot('control','vrma');for(let i=0;i<3;i++)await new Promise(r=>setImmediate(r));assert.ok(node('idleMotion').children.some(o=>o.value==='VRMA_02.vrma'));assert.equal(node('idleMotion').value,'');
- node('idleMotion').value='VRMA_02.vrma';node('idleMode').value='pose';node('idlePose').value='45';node('idleSpeed').value='.6';node('persona').value='draft';node('settingsForm').oninput();notify({reloadMotions:true,settings:{...DEFAULTS}});for(let i=0;i<3;i++)await new Promise(r=>setImmediate(r));assert.equal(node('persona').value,'draft');assert.equal(node('idleMotion').value,'VRMA_02.vrma');
+ node('idleMotion').value='VRMA_02.vrma';node('idleMode').value='pose';node('idlePose').value='45';node('idleSpeed').value='.6';node('persona').value='draft';node('settingsForm').oninput();notify({reloadMotions:true,settings:{...DEFAULTS,modelPath:'fixture.vrm'}});for(let i=0;i<3;i++)await new Promise(r=>setImmediate(r));assert.equal(node('persona').value,'draft');assert.equal(node('idleMotion').value,'VRMA_02.vrma');
  await node('settingsForm').onsubmit({preventDefault(){}});const s=calls.find(c=>c[0]==='save')[1];assert.equal(s.idleMotion,'VRMA_02.vrma');assert.equal(s.idleMode,'pose');assert.equal(s.idlePose,45);assert.equal(s.idleSpeed,.6);
 });
 test('renderer displays chosen static idle after greeting, during conversation, and after showing again',async()=>{
@@ -181,8 +181,8 @@ test('model list errors and empty responses are visible and changing providers i
  const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');assert.ok(html.indexOf('id="fetchModels"')<html.indexOf('id="connectionStatus"'));assert.ok(html.indexOf('id="connectionStatus"')<html.indexOf('id="cloudSettings"'));
 });
 
-test('VRM voice changes update the selected embedding label even while other settings are unsaved',async()=>{
- const {node,notify}=await boot('control');node('persona').value='未保存の性格';node('settingsForm').oninput({target:node('persona')});notify({settings:{...DEFAULTS,modelPath:'B.vrm',speakerPath:'B.speaker.safetensors'}});assert.equal(node('speakerPath').textContent,'B.speaker.safetensors');assert.equal(node('vrmPath').textContent,'B.vrm');assert.equal(node('persona').value,'未保存の性格');
+test('VRM voice changes refresh persona while preserving unrelated unsaved settings',async()=>{
+ const {node,notify}=await boot('control');node('persona').value='未保存の性格';node('temperature').value='1.2';node('settingsForm').oninput({target:node('persona')});notify({settings:{...DEFAULTS,modelPath:'B.vrm',persona:'Bの性格',speakerPath:'B.speaker.safetensors'}});assert.equal(node('speakerPath').textContent,'B.speaker.safetensors');assert.equal(node('vrmPath').textContent,'B.vrm');assert.equal(node('persona').value,'Bの性格');assert.equal(node('temperature').value,'1.2');
 });
 
 test('input log follows saved character history, shows pending text once, and retains failed drafts',async()=>{
@@ -261,4 +261,12 @@ test('local discovery offers repaired NemoMix without changing an unrelated mode
   await node('fetchModels').onclick();assert.equal(node('model').value,expected);
   assert.equal(calls.filter(c=>c[0]==='save').length,0,'Discovery must not save the choice before user saves settings.');
  }
+});
+
+
+test('VRM changes refresh character fields even with unsaved global settings',async()=>{
+ const {node,notify,calls}=await boot('control');node('endpoint').value='http://127.0.0.1:11999';node('name').value='未保存の元VRM';node('settingsForm').oninput();
+ notify({settings:{...DEFAULTS,modelPath:'/B.vrm',name:'Bの子',persona:'Bの口調',selfPronoun:'あたし',userAddress:'相棒'},reloadVRM:true});
+ for(const [id,value]of Object.entries({name:'Bの子',persona:'Bの口調',selfPronoun:'あたし',userAddress:'相棒'}))assert.equal(node(id).value,value);
+ assert.equal(node('endpoint').value,'http://127.0.0.1:11999');await node('settingsForm').onsubmit({preventDefault(){}});const saved=calls.findLast(c=>c[0]==='save')[1];assert.equal(saved.name,'Bの子');assert.equal(saved.selfPronoun,'あたし');assert.equal(saved.userAddress,'相棒');
 });

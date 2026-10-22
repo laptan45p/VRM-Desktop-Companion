@@ -119,3 +119,7 @@ Windows版の作成は `npm run package:win` です。Gitにはソースを登�
 ## Ollamaをかんたん導入
 
 `install_ollama.bat`をダブルクリックすると、Ollamaの導入とVRAMに応じた初期モデルの取得ができます。詳しくは[Ollama導入手順](OLLAMA_SETUP.md)をご覧ください。
+
+
+名前と性格・口調はVRMファイルごとに保存・復元できます。設定後は「設定を保存」を押してください。
+
