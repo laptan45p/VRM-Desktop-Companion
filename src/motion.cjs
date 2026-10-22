@@ -50,7 +50,8 @@
  }
  class ReactionMotion{
   constructor(){this.start=-Infinity;this.emotion=null;this.keys=new Set();}
-  trigger(emotion,now){if(['shy','surprised','angry'].includes(emotion)){this.emotion=emotion;this.start=now;}}
+  trigger(emotion,now,{delay=0}={}){if(['shy','surprised','angry'].includes(emotion)){this.emotion=emotion;this.start=now+(Number.isFinite(delay)?Math.max(0,Math.min(1,delay)):0);}}
+  stop(){this.emotion=null;this.start=-Infinity;}
   update(vrm,now,{expressions=true}={}){
    const manager=vrm?.expressionManager;
    for(const k of this.keys)manager?.setValue(k,0);this.keys.clear();
@@ -67,6 +68,79 @@
    }
   }
  }
- return {LipMotion,SoftIdle,ReactionMotion,capturePose,planSpeech,MOUTHS};
+ class TouchPoseBlend{
+  constructor(){this.reset();}
+  reset(){this.vrm=null;this.pose=[];this.start=-Infinity;this.duration=.8;}
+  active(now){return !!this.vrm&&now>=this.start&&now<this.start+this.duration;}
+  begin(vrm,now,duration=.8){
+   this.vrm=vrm;this.start=now;this.duration=Number.isFinite(duration)?Math.max(.1,Math.min(2,duration)):.8;
+   this.pose=Object.values(vrm.humanoid?.normalizedHumanBones||{}).map(b=>b.node).filter(Boolean).map(node=>({node,position:node.position.clone(),quaternion:node.quaternion.clone()}));
+  }
+  update(vrm,now){
+   if(this.vrm!==vrm||!this.active(now)){this.reset();return;}
+   const t=Math.max(0,Math.min(1,(now-this.start)/this.duration)),amount=1-t*t*(3-2*t);
+   for(const p of this.pose){p.node.position.lerp(p.position,amount);p.node.quaternion.slerp(p.quaternion,amount);}
+  }
+ }
+ class ChestPoke{
+  constructor(vrm,Vector3){
+   this.vrm=vrm;this.Vector3=Vector3;this.active=new Map();this.applied=[];this.parts=[];
+   const h=vrm.humanoid,excluded=new Set();
+   for(const key of ['hips','spine','chest','upperChest','neck','head']){
+    excluded.add(h?.getRawBoneNode?.(key));excluded.add(h?.getNormalizedBoneNode?.(key));
+   }
+   const named=b=>b?.isBone&&!excluded.has(b)&&/胸|乳|breast|bust|chest/i.test(b.name||'')&&!/ribbon|リボン|紐|ひも|飾|accessor|tie/i.test(b.name||'');
+   vrm.scene.updateMatrixWorld(true);
+   vrm.scene.traverse(b=>{if(!named(b))return;for(let p=b.parent;p;p=p.parent)if(named(p))return;
+    const bones=new Set();b.traverse(c=>{if(c.isBone)bones.add(c);});this.parts.push({bone:b,bones});
+   });
+   const head=h?.getRawBoneNode?.('head'),foot=h?.getRawBoneNode?.('leftFoot');
+   this.height=head&&foot?head.getWorldPosition(new Vector3()).distanceTo(foot.getWorldPosition(new Vector3()))*1.08:1.7;
+   this.height=Math.max(.001,this.height);
+  }
+  pick(hit){
+   const mesh=hit?.object,index=mesh?.geometry?.attributes?.skinIndex,weight=mesh?.geometry?.attributes?.skinWeight;
+   if(!mesh?.isSkinnedMesh||!index||!weight||!hit.face||!hit.point)return null;
+   this.vrm.scene.updateMatrixWorld(true);let best=null,score=-Infinity;
+   for(const part of this.parts){
+    let influence=0;for(const v of [hit.face.a,hit.face.b,hit.face.c]){let sum=0;for(const a of ['X','Y','Z','W'])if(part.bones.has(mesh.skeleton.bones[index['get'+a](v)]))sum+=weight['get'+a](v);influence+=sum/3;}
+    const distance=part.bone.getWorldPosition(new this.Vector3()).distanceTo(hit.point);
+    if(influence<.1||distance>this.height*.18)continue;
+    const value=influence-distance/this.height;if(value>score){best=part;score=value;}
+   }
+   return best;
+  }
+  poke(hit,direction){
+   if(!direction||![direction.x,direction.y,direction.z].every(Number.isFinite)||direction.length()<1e-8)return false;
+   const part=this.pick(hit);if(!part||!part.bone.parent)return false;
+   this.restore();this.vrm.scene.updateMatrixWorld(true);
+   const bone=part.bone,world=bone.getWorldPosition(new this.Vector3()),inward=direction.clone().normalize();
+   const offset=bone.parent.worldToLocal(world.clone().addScaledVector(inward,this.height*.018)).sub(bone.parent.worldToLocal(world.clone()));
+   const contact=bone.worldToLocal(hit.point.clone()),localDirection=bone.worldToLocal(hit.point.clone().add(inward)).sub(contact).normalize();
+   const axis=contact.clone().cross(localDirection);if(axis.length()>1e-8)axis.normalize();else axis.set(0,0,0);
+   // Restart the bounded impulse rather than accumulating deformation on repeated taps.
+   this.active.set(bone,{time:0,offset,axis});return true;
+  }
+  restore(){
+   for(const [bone,position,quaternion]of this.applied){bone.position.copy(position);bone.quaternion.copy(quaternion);bone.updateMatrix();}
+   if(this.applied.length)this.vrm.scene.updateMatrixWorld(true);this.applied=[];
+  }
+  reset(){this.restore();this.active.clear();}
+  reactionDelay(){let delay=0;for(const impulse of this.active.values())delay=Math.max(delay,.9-impulse.time);return Math.max(0,delay);}
+  update(dt){
+   const step=Number.isFinite(dt)?Math.max(0,Math.min(.1,dt)):0;
+   for(const [bone,impulse]of this.active){
+    impulse.time+=step;if(impulse.time>=1.5){this.active.delete(bone);continue;}
+    const response=Math.sin(impulse.time*17)*Math.exp(-4.5*impulse.time);
+    this.applied.push([bone,bone.position.clone(),bone.quaternion.clone()]);
+    bone.position.addScaledVector(impulse.offset,response);
+    if(impulse.axis.lengthSq()>0)bone.quaternion.multiply(bone.quaternion.clone().setFromAxisAngle(impulse.axis,.22*response));
+    // Spring bones may disable matrixAutoUpdate; write both transforms to the mesh matrices.
+    bone.updateMatrix();bone.updateMatrixWorld(true);
+   }
+   if(this.applied.length)this.vrm.scene.updateMatrixWorld(true);
+  }
+ }
+ return {LipMotion,SoftIdle,ReactionMotion,TouchPoseBlend,ChestPoke,capturePose,planSpeech,MOUTHS};
 });
 

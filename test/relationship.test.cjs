@@ -14,9 +14,9 @@ test('successful chat candidates are immutable and bounded by cooldown and local
 });
 test('head strokes share the daily cap; anger resists head strokes and repeated penalties are throttled',()=>{
  let p=fresh();const head={region:'head',gesture:'stroke',emotion:'shy'},bad={region:'chest',gesture:'poke',emotion:'angry'};
- p=R.touch(p,head,now);assert.equal(p.affinity,1);p=R.touch(p,head,now+1);assert.equal(p.affinity,1);p=R.touch(p,bad,now+2);assert.equal(p.affinity,-1);
- p=R.touch(p,bad,now+3);assert.equal(p.affinity,-1);p=R.touch(p,head,now+31000);assert.equal(p.affinity,-1);assert.equal(R.mood(p,now+31000),'angry');
- p=R.touch(p,bad,now+32000);assert.equal(p.affinity,-3);p=R.touch(p,head,now+300000);assert.equal(p.affinity,-2);assert.equal(p.romance,0);
+ p=R.touch(p,head,now);assert.equal(p.affinity,1);p=R.touch(p,head,now+1);assert.equal(p.affinity,1);p=R.touch(p,bad,now+2);assert.equal(p.affinity,0);
+ p=R.touch(p,bad,now+3);assert.equal(p.affinity,0);p=R.touch(p,head,now+31000);assert.equal(p.affinity,0);assert.equal(R.mood(p,now+31000),'angry');
+ p=R.touch(p,bad,now+32000);assert.equal(p.affinity,-1);p=R.touch(p,head,now+300000);assert.equal(p.affinity,0);assert.equal(p.romance,0);
 });
 test('friendship and praise do not automatically establish romance; confession uses pre-award state',()=>{
  const p=fresh();p.affinity=100;p.romance=100;assert.equal(R.prepare(p,'大好き',{now}).profile.lovers,false);

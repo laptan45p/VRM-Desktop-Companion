@@ -48,7 +48,7 @@ function touch(p,reaction,now=Date.now()){
  const next=structuredClone(p),angry=mood(next,now)==='angry';
  if(reaction.emotion==='angry'){
   setMood(next,'angry',now,180000);
-  if(!next.lastPenalty||now-next.lastPenalty>=30000){next.affinity=Math.max(-100,next.affinity-2);next.lastPenalty=now;}
+  if(!next.lastPenalty||now-next.lastPenalty>=30000){next.affinity=Math.max(-100,next.affinity-1);next.lastPenalty=now;}
  }else if(!angry){
   setMood(next,reaction.emotion==='shy'?'shy':'surprised',now,60000);
   if(reaction.region==='head'&&reaction.gesture==='stroke'&&(!next.lastStroke||now-next.lastStroke>=STROKE_COOLDOWN)){gain(next,1,0,now);next.lastStroke=now;}

@@ -118,7 +118,7 @@ async function initControl(){
 let scene,camera,renderer,vrm,demoRoot,modelRoot,clock,elapsed=0,loadId=0,blinkAt=2,blinkStart=-10;
 const faces=new window.companionExpressions.FaceExpressions();
 const speechFaces=new window.companionExpressions.SpeechExpressions(faces);
-let rest=new Map(),cloth=null,hands=null,orientationPreview=null,cancelInteraction=()=>{};
+let rest=new Map(),cloth=null,hands=null,chestPoke=null,orientationPreview=null,cancelInteraction=()=>{};
 let utteranceId=null,voiceText='';
 const speechAudio=new window.companionAudio.SpeechAudio(()=>new window.AudioContext({latencyHint:'interactive'}),(id,phase,error)=>{
  if(id===utteranceId){
@@ -158,7 +158,7 @@ async function loadMotions(){
 }
 const modelOrientation=new window.companionOrientation.ModelOrientation(THREE.Vector3,THREE.Box3);
 const picking=new window.companionPicking.MeshPicking(THREE.Vector3);
-const lips=new window.companionMotion.LipMotion(),idle=new window.companionMotion.SoftIdle(),reactionMotion=new window.companionMotion.ReactionMotion();
+const lips=new window.companionMotion.LipMotion(),idle=new window.companionMotion.SoftIdle(),reactionMotion=new window.companionMotion.ReactionMotion(),touchPose=new window.companionMotion.TouchPoseBlend();
 function createDemo(){
  const g=new THREE.Group();
  const mat=new THREE.MeshStandardMaterial({color:0x8eb5a2,roughness:.8});
@@ -205,7 +205,7 @@ function resizeViewport(){
 }
 async function loadVRM(announce=false){
  faces.bind(null);api.expressionReady(state.settings.modelPath,[]);
- stopVoiceLocal();cancelInteraction();++motionGeneration;motionPlayer.dispose();
+ stopVoiceLocal();cancelInteraction();touchPose.reset();reactionMotion.stop();++motionGeneration;motionPlayer.dispose();
  const id=++loadId;
  if(!state.settings.modelPath)return true;
  
@@ -226,10 +226,10 @@ async function loadVRM(announce=false){
  candidate.update(0);
  // Disable static bounds culling on animated meshes.
  candidate.scene.traverse(o=>{if(o.isMesh)o.frustumCulled=false;});
- cloth?.reset();hands?.reset();
+ cloth?.reset();hands?.reset();chestPoke?.reset();
  unlitMaterials.clear();disposeRoot(modelRoot);disposeRoot(demoRoot);demoRoot=null;vrm=candidate;modelRoot=vrm.scene;scene.add(modelRoot);unlitMaterials.bind(modelRoot);
  faces.bind(vrm);api.expressionReady(state.settings.modelPath,faces.names);
- rest=window.companionMotion.capturePose(vrm);lips.stop();cloth=new window.companionCloth.ClothDrag(vrm,THREE.Vector3,state.settings);hands=new window.companionHand.HandDrag(vrm,THREE.Vector3);
+ rest=window.companionMotion.capturePose(vrm);lips.stop();cloth=new window.companionCloth.ClothDrag(vrm,THREE.Vector3,state.settings);hands=new window.companionHand.HandDrag(vrm,THREE.Vector3);chestPoke=new window.companionMotion.ChestPoke(vrm,THREE.Vector3);
  applyOrientation(modelRoot);fitModel(modelRoot);loadMotions();
  if(announce)api.modelStatus('準備できたよ。話しかけてね。');
  return true;
@@ -250,9 +250,10 @@ function initMascot(){
  const root=vrm?.scene||demoRoot;
  if(root)applyOrientation(root);
  if(vrm){
- cloth?.restore();hands?.restore();motionPlayer.restorePose();
+ cloth?.restore();chestPoke?.restore();hands?.restore();motionPlayer.restorePose();
  idle.update(vrm,rest,elapsed,dt,{enabled:state.settings.softIdle,strength:state.settings.motionStrength,thinking:state.busy});
  motionPlayer.update(dt,elapsed,{blocked:interacting||elapsed<motionHoldUntil||state.busy||state.mascotVisible===false,speaking:speechAudio.active()||lips.active(performance.now()/1000),suspendIdle:interacting||elapsed<motionHoldUntil||state.mascotVisible===false});
+ touchPose.update(vrm,elapsed);
  const talking=lips.update(vrm,performance.now()/1000,dt,state.settings.lipSync,speechAudio.sample());
  if(elapsed>=blinkAt){blinkStart=elapsed;blinkAt=elapsed+2.5+Math.random()*3;}
  const p=(elapsed-blinkStart)/.18;const blink=p>=0&&p<1?Math.sin(p*Math.PI):0;
@@ -261,6 +262,7 @@ function initMascot(){
  faces.update(elapsed,dt,{talking,blink});
  hands?.update(dt);
  vrm.update(dt);
+ chestPoke?.update(dt);
  cloth?.update(dt);
  }
  if(vrm)unlitMaterials.apply();
@@ -325,11 +327,15 @@ function initCharacterMouse(){
  },{passive:false});
  el.onpointerdown=e=>{
   if(down||e.button!==0||e.isPrimary===false||state.pass)return;const target=hit(e);if(!target)return;
+  const rotate=!!e.ctrlKey,region=rotate||e.shiftKey?null:regionAt(target);
+  if(region==='chest'){touchPose.begin(vrm,elapsed);reactionMotion.stop();}else touchPose.reset();
   interacting=true;motionPlayer.interrupt(elapsed);
-  const rotate=!!e.ctrlKey;if(rotate){cloth?.reset();hands?.reset();}
+  if(region==='chest')touchPose.update(vrm,elapsed);
+  if(rotate){cloth?.reset();hands?.reset();}
   const handGrab=!rotate&&!e.shiftKey&&state.settings.handDrag&&hands?.begin(target);
   const grab=!rotate&&!handGrab&&!e.shiftKey&&state.settings.clothDrag&&cloth?.begin(target);
-  e.preventDefault();el.setPointerCapture(e.pointerId);down={id:e.pointerId,x:e.screenX,y:e.screenY,lastX:e.screenX,lastY:e.screenY,path:0,max:0,start:performance.now(),region:rotate||e.shiftKey?null:regionAt(target),rotate,roll:!!e.shiftKey,angles:{angleX:state.settings.angleX,angleY:state.settings.angleY,angleZ:state.settings.angleZ},cloth:!!grab,hand:!!handGrab,anchor:target.point.clone(),depth:target.point.clone().project(camera).z,moved:false};api.hit(true);
+  if(handGrab||grab)touchPose.reset();
+  e.preventDefault();el.setPointerCapture(e.pointerId);down={id:e.pointerId,x:e.screenX,y:e.screenY,lastX:e.screenX,lastY:e.screenY,path:0,max:0,start:performance.now(),region,rotate,roll:!!e.shiftKey,angles:{angleX:state.settings.angleX,angleY:state.settings.angleY,angleZ:state.settings.angleZ},cloth:!!grab,hand:!!handGrab,anchor:target.point.clone(),depth:target.point.clone().project(camera).z,moved:false};api.hit(true);
  };
  function track(e){
   down.path+=Math.hypot(e.screenX-down.lastX,e.screenY-down.lastY);down.lastX=e.screenX;down.lastY=e.screenY;
@@ -367,11 +373,11 @@ function initCharacterMouse(){
   else if(previous.region){
    const target=hit(e),region=target&&regionAt(target);
    // A gesture must finish on its initial region; cancelled swipes never count.
-   if(!state.pass&&region===previous.region){const gesture=window.companionInteraction.gestureKind(previous.path,performance.now()-previous.start);if(gesture)api.touch(previous.region,gesture);}
+   if(!state.pass&&region===previous.region){const gesture=window.companionInteraction.gestureKind(previous.path,performance.now()-previous.start);if(gesture){if(region==='chest'&&gesture==='poke'&&chestPoke?.poke(target,target.point.clone().sub(camera.position)))reactionMotion.stop();api.touch(previous.region,gesture);}}
   }else if(previous.moved)api.drag('end',e.screenX,e.screenY);else api.action('talk');
   over=!!hit(e);api.hit(over);
  };
- function cancel(){interacting=false;motionPlayer.interrupt(elapsed);if(orientationPreview){orientationPreview=null;fitModel(vrm?.scene||demoRoot);}cloth?.release();hands?.release();if(down){down=null;api.drag('end',0,0);}over=false;api.hit(false);}
+ function cancel(){interacting=false;touchPose.reset();motionPlayer.interrupt(elapsed);if(orientationPreview){orientationPreview=null;fitModel(vrm?.scene||demoRoot);}cloth?.release();hands?.release();chestPoke?.reset();if(down){down=null;api.drag('end',0,0);}over=false;api.hit(false);}
  cancelInteraction=cancel;
  el.onpointercancel=cancel;el.onlostpointercapture=()=>{if(down)cancel();};window.addEventListener('blur',cancel);
  el.oncontextmenu=e=>{e.preventDefault();if(!state.pass&&hit(e)){cancel();api.action('menu');}};
@@ -384,10 +390,13 @@ api.onUpdate(data=>{
   if(data.reply||data.greeting){const mood=data.mood||state.relationship?.mood||'happy';speechFaces.setMood(mood,elapsed);}
   if(data.expressionPreview)faces.show(data.expressionPreview.name,data.expressionPreview.weight,elapsed);
   if(data.greeting)motionPlayer.greet();
-  if(data.reaction){motionPlayer.interrupt(elapsed);motionHoldUntil=elapsed+3.5;}
   if(data.settings)motionPlayer.configure(state.settings,elapsed);
   if(data.reloadMotions)loadMotions();
-  if(data.reaction){reactionMotion.trigger(data.reaction.emotion,performance.now()/1000);speechFaces.setMood(data.reaction.emotion,elapsed,3.5);}
+  if(data.reaction){
+   const delay=data.reaction.region==='chest'&&data.reaction.gesture==='poke'?(chestPoke?.reactionDelay()||0):0;
+   motionPlayer.interrupt(elapsed);motionHoldUntil=elapsed+3.5+delay;
+   reactionMotion.trigger(data.reaction.emotion,performance.now()/1000,{delay});speechFaces.setMood(data.reaction.emotion,elapsed,3.5);
+  }
   const failedCurrent=data.voiceFailed!==undefined&&data.voiceFailed===utteranceId;
   if(data.voiceStop||data.mascotVisible===false)stopVoiceLocal();
   if(data.speech!==undefined){
@@ -405,6 +414,7 @@ api.onUpdate(data=>{
   if(data.settings&&!state.settings.ttsEnabled&&before.ttsEnabled)stopVoiceLocal();
   if(data.reloadVRM)loadVRM(true);
   if(data.settings)cloth?.configure?.(state.settings);
+  if(data.mascotVisible===false||data.pass||data.reloadVRM||data.settings&&(!state.settings.touchEnabled||rotationChanged||before.scale!==state.settings.scale)){chestPoke?.reset();touchPose.reset();}
   if(data.pass||data.settings&&(before.handDrag!==state.settings.handDrag||before.clothDrag!==state.settings.clothDrag||before.clothReach!==state.settings.clothReach||before.clothAngle!==state.settings.clothAngle||rotationChanged||before.scale!==state.settings.scale)){if(interacting||data.pass||rotationChanged||before.scale===state.settings.scale)cancelInteraction();cloth?.reset();hands?.reset();}
   if(renderer&&(before.scale!==state.settings.scale||rotationChanged))resizeViewport();
  }else if(view==='input'){
