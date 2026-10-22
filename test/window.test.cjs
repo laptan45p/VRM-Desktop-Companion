@@ -246,3 +246,20 @@ test('mascot saves its actual frameless bounds rather than stale normal-window p
  mascot.setBounds({...mascot.getBounds(),x:-1900,y:-200});mascot.emit('move');assert.equal((await b.invoke('state')).data.settings.mascotX,-1900);
  b.app.emit('before-quit');assert.equal(b.saved().settings.mascotY,-200);
 });
+
+test('expression catalog and preview enforce sender, current model, name and weight',async()=>{
+ const {as,invoke,windows}=await boot({modelPath:'face.vrm'});
+ assert.equal((await invoke('expression-ready','face.vrm',['赤面'])).ok,false);
+ assert.equal((await as(1,'expression-ready','old.vrm',['古い表情'])).ok,true);
+ assert.equal((await invoke('expression-catalog')).data.names.length,0);
+ assert.equal((await as(1,'expression-ready','face.vrm',['赤面','ハート','赤面'])).ok,true);
+ assert.deepEqual(Array.from((await invoke('expression-catalog')).data.names),['赤面','ハート']);
+ assert.equal((await as(1,'expression-preview','face.vrm','赤面',.5)).ok,false);
+ assert.equal((await invoke('expression-preview','old.vrm','赤面',.5)).ok,false);
+ assert.equal((await invoke('expression-preview','face.vrm','missing',.5)).ok,false);
+ for(const value of [NaN,Infinity,-1,1.1,'0.5'])assert.equal((await invoke('expression-preview','face.vrm','赤面',value)).ok,false);
+ assert.equal((await invoke('expression-preview','face.vrm','赤面',.5)).ok,true);
+ assert.equal(windows[1].events.at(-1).expressionPreview.name,'赤面');
+ assert.equal((await invoke('expression-preview','face.vrm','',0)).ok,true);
+ assert.equal((await as(1,'expression-ready','face.vrm',[12])).ok,false);
+});

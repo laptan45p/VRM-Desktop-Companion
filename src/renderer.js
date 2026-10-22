@@ -15,6 +15,16 @@ function selectControlTab(which){const chat=which==='chat';$('chatView').hidden=
 function settingsFromForm(){const s={...state.settings};for(const id of ['provider','endpoint','model','name','persona','bubbleFont','greetingMotion','idleMotion','idleMode','ttsEndpoint','ttsCaption','cloudReasoning','compatibleTokenParam'])s[id]=$(id).value;for(const id of ['temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose','ttsSpeed','ttsVolume','ttsTimeout','cloudMaxTokens'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled','cloudTemperature'])s[k]=$(k).checked;s.clothReach=Number($('clothReach').value)/100;return s;}
 function fillSettings(s){for(const id of ['provider','endpoint','name','persona','bubbleFont','temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose','ttsSpeed','ttsVolume','ttsTimeout','cloudMaxTokens'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled','cloudTemperature'])$(k).checked=s[k];$('clothReach').value=Math.round(s.clothReach*100);setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';$('motionPath').textContent=s.motionFolder||'モーション未選択';$('ttsEndpoint').value=s.ttsEndpoint;$('ttsCaption').value=s.ttsCaption;$('speakerPath').textContent=s.speakerPath||'Speaker Embedding未選択';$('idleMode').value=s.idleMode;setMotionOptions(motionNames,s.greetingMotion,s.idleMotion);$('cloudReasoning').value=s.cloudReasoning;$('compatibleTokenParam').value=s.compatibleTokenParam;updateProviderUI();}
 let motionNames=[];
+let expressionPath='',expressionNames=[],expressionRequest=0;
+function setExpressionOptions(names,modelPath){
+ expressionRequest++;
+ const el=$('expressionName'),selected=expressionPath===modelPath?el.value:'';
+ expressionPath=modelPath;expressionNames=names;el.replaceChildren();el.add(new Option('表情を選択',''));
+ for(const name of names)el.add(new Option(name,name));el.value=names.includes(selected)?selected:'';
+ status('expressionStatus',names.length?`${names.length}個の表情を読み込みました。`:'VRMの読み込み後、登録されている表情が表示されます。');
+}
+async function refreshExpressionOptions(){const request=++expressionRequest;try{const catalog=await call(api.expressionCatalog());if(request===expressionRequest&&catalog.modelPath===state.settings.modelPath)setExpressionOptions(catalog.names,catalog.modelPath);}catch(e){if(request===expressionRequest)status('expressionStatus',e.message,true);}}
+async function previewExpression(){const name=$('expressionName').value;if(!name)throw new Error('表情を選んでください。');await call(api.previewExpression(expressionPath,name,Number($('expressionWeight').value)/100));status('expressionStatus','5秒間プレビューします：'+name);}
 function setMotionOptions(names,selected,idleSelected){motionNames=names;const idle=$('idleMotion');idle.replaceChildren();idle.add(new Option('標準の待機動作',''));for(const name of names)idle.add(new Option(name,name));if(idleSelected&&!names.includes(idleSelected))idle.add(new Option(idleSelected+'（未読み込み・標準動作を使用）',idleSelected));idle.value=idleSelected||'';const el=$('greetingMotion');el.replaceChildren();for(const name of names)el.add(new Option(name,name));if(!names.includes(selected))el.add(new Option(selected||'VRMA_02.vrma',selected||'VRMA_02.vrma'));el.value=selected||'VRMA_02.vrma';}
 async function refreshMotionOptions(){try{const names=await call(api.motionList());setMotionOptions(names,dirty?$('greetingMotion').value:state.settings.greetingMotion,dirty?$('idleMotion').value:state.settings.idleMotion);}catch(e){status('motionStatus',e.message,true);}}
 let keyRequest=0,keyAvailable=true,keySaved=false;
@@ -54,6 +64,11 @@ function renderRelationship(){
 }
 function updateBusy(value){busy=value;$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear'])$(id).disabled=busy;$('fetchModels').disabled=busy||fetchingModels;$('saveKey').disabled=busy||!keyAvailable;$('deleteKey').disabled=busy||!keySaved;for(const id of ['relationshipProfile','relationshipName','createRelationship','romanceEnabled'])$(id).disabled=busy;$('confess').disabled=busy||!state.relationship?.romanceEnabled;}
 async function initControl(){
+ refreshExpressionOptions();
+ $('previewExpression').onclick=wrap(previewExpression,'expressionStatus');
+ $('resetExpression').onclick=wrap(async()=>{await call(api.previewExpression(expressionPath,'',0));status('expressionStatus','自動表情へ戻しました。');},'expressionStatus');
+ $('expressionWeight').value=70;
+ $('expressionWeight').oninput=wrap(async()=>{if($('expressionName').value)await previewExpression();},'expressionStatus');
  renderRelationship();
  const relationAction=async(operation,value)=>{if(dirty)throw new Error('変更した設定を先に保存してください。');state.relationship=await call(api.relationship(operation,value));renderRelationship();status('relationshipStatus','関係の設定を保存しました。');};
  $('relationshipProfile').onchange=wrap(async()=>{try{await relationAction('select',$('relationshipProfile').value);}finally{renderRelationship();}},'relationshipStatus');
@@ -63,7 +78,7 @@ async function initControl(){
  fillSettings(state.settings);status('voiceStatus',state.voiceStatus||'');$('chooseSpeaker').onclick=wrap(async()=>{const path=await call(api.chooseSpeaker());if(path)$('speakerPath').textContent=path;},'voiceStatus');$('testVoice').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');await call(api.action('test-voice'));},'voiceStatus');$('stopVoice').onclick=()=>api.action('stop-voice');refreshMotionOptions();$('chooseMotions').onclick=wrap(async()=>{const names=await call(api.chooseMotions());if(names){await refreshMotionOptions();$('motionPath').textContent=state.settings.motionFolder;status('motionStatus',names.length+'件のモーションを登録しました。');}},'motionStatus');$('dataPath').textContent='設定と履歴：'+state.dataPath;
  const tabs=selectControlTab;
  $('chatTab').onclick=()=>tabs('chat');$('settingsTab').onclick=()=>tabs('settings');
- $('settingsForm').oninput=e=>{if(['relationshipProfile','relationshipName','romanceEnabled'].includes(e?.target?.id))return;dirty=true;};
+ $('settingsForm').oninput=e=>{if(['relationshipProfile','relationshipName','romanceEnabled','expressionName','expressionWeight'].includes(e?.target?.id))return;dirty=true;};
  $('provider').onchange=()=>{invalidateModels();$('endpoint').value={ollama:'http://127.0.0.1:11434',lmstudio:'http://127.0.0.1:1234',openai:'https://api.openai.com/v1',openrouter:'https://openrouter.ai/api/v1',compatible:''}[$('provider').value];$('apiKey').value='';setModels([],$('provider').value==='openai'?'gpt-6-luna':'');dirty=true;updateProviderUI();};
  $('endpoint').oninput=()=>{invalidateModels();dirty=true;$('apiKey').value='';refreshKeyStatus();};
  $('saveKey').onclick=wrap(async()=>{const key=$('apiKey').value;$('apiKey').value='';await call(api.saveKey(settingsFromForm(),key));await refreshKeyStatus();},'keyStatus');
@@ -95,7 +110,8 @@ async function initControl(){
  if(state.startupError)status('chatStatus',state.startupError,true);
  renderHistory();updateBusy(state.busy);selectControlTab('settings');
 }
-let scene,camera,renderer,vrm,demoRoot,modelRoot,clock,elapsed=0,loadId=0,moodUntil=0,blinkAt=2,blinkStart=-10;
+let scene,camera,renderer,vrm,demoRoot,modelRoot,clock,elapsed=0,loadId=0,blinkAt=2,blinkStart=-10;
+const faces=new window.companionExpressions.FaceExpressions();
 let rest=new Map(),cloth=null,hands=null,orientationPreview=null,cancelInteraction=()=>{};
 let utteranceId=null,voiceText='';
 const speechAudio=new window.companionAudio.SpeechAudio(()=>new window.AudioContext({latencyHint:'interactive'}),(id,phase,error)=>{
@@ -178,6 +194,7 @@ function resizeViewport(){
  fitModel(vrm?.scene||demoRoot);
 }
 async function loadVRM(announce=false){
+ faces.bind(null);api.expressionReady(state.settings.modelPath,[]);
  stopVoiceLocal();cancelInteraction();++motionGeneration;motionPlayer.dispose();
  const id=++loadId;
  if(!state.settings.modelPath)return;
@@ -201,6 +218,7 @@ async function loadVRM(announce=false){
  candidate.scene.traverse(o=>{if(o.isMesh)o.frustumCulled=false;});
  cloth?.reset();hands?.reset();
  disposeRoot(modelRoot);disposeRoot(demoRoot);demoRoot=null;vrm=candidate;modelRoot=vrm.scene;scene.add(modelRoot);
+ faces.bind(vrm);api.expressionReady(state.settings.modelPath,faces.names);
  rest=window.companionMotion.capturePose(vrm);lips.stop();cloth=new window.companionCloth.ClothDrag(vrm,THREE.Vector3,state.settings);hands=new window.companionHand.HandDrag(vrm,THREE.Vector3);
  applyOrientation(modelRoot);fitModel(modelRoot);loadMotions();
  if(announce)api.modelStatus('準備できたよ。話しかけてね。');
@@ -227,8 +245,9 @@ function initMascot(){
  const talking=lips.update(vrm,performance.now()/1000,dt,state.settings.lipSync,speechAudio.sample());
  if(elapsed>=blinkAt){blinkStart=elapsed;blinkAt=elapsed+2.5+Math.random()*3;}
  const p=(elapsed-blinkStart)/.18;const blink=p>=0&&p<1?Math.sin(p*Math.PI):0;
- vrm.expressionManager?.setValue('blink',blink);vrm.expressionManager?.setValue('happy',elapsed<moodUntil?(talking?0:.35):0);
- reactionMotion.update(vrm,performance.now()/1000);
+ vrm.expressionManager?.setValue('blink',blink);
+ reactionMotion.update(vrm,performance.now()/1000,{expressions:false});
+ faces.update(elapsed,dt,{talking,blink});
  hands?.update(dt);
  vrm.update(dt);
  cloth?.update(dt);
@@ -350,12 +369,13 @@ api.onUpdate(data=>{
  if(!state)return;const before=state.settings;state={...state,...data};
  const rotationChanged=['angleX','angleY','angleZ'].some(k=>before[k]!==state.settings[k]);
  if(isMascot){
-  if(data.reply&&data.mood!=='angry'||data.greeting&&state.relationship?.mood!=='angry')moodUntil=elapsed+4;
+  if(data.reply||data.greeting){const mood=data.mood||state.relationship?.mood||'happy';faces.trigger(mood==='calm'?'happy':mood,elapsed);}
+  if(data.expressionPreview)faces.show(data.expressionPreview.name,data.expressionPreview.weight,elapsed);
   if(data.greeting)motionPlayer.greet();
   if(data.reaction){motionPlayer.interrupt(elapsed);motionHoldUntil=elapsed+3.5;}
   if(data.settings)motionPlayer.configure(state.settings,elapsed);
   if(data.reloadMotions)loadMotions();
-  if(data.reaction)reactionMotion.trigger(data.reaction.emotion,performance.now()/1000);
+  if(data.reaction){reactionMotion.trigger(data.reaction.emotion,performance.now()/1000);faces.trigger(data.reaction.emotion,elapsed,3.5);}
   if(data.voiceStop||data.mascotVisible===false)stopVoiceLocal();
   if(data.speech!==undefined){stopVoiceLocal();utteranceId=data.speechId??null;if(data.speech&&!data.thinking&&!data.ttsPending)lips.play(data.speech,performance.now()/1000);}
   if(data.voiceFailed===utteranceId&&state.speech)lips.play(state.speech,performance.now()/1000);
@@ -372,6 +392,7 @@ api.onUpdate(data=>{
   if(data.bubbleSide)document.body.dataset.side=data.bubbleSide;
   if(data.speech!==undefined||data.settings)updateSpeech(data.speech);
  }else{
+  if(data.expressionNames)setExpressionOptions(data.expressionNames,state.settings.modelPath);
   if(data.voiceStatus!==undefined)status('voiceStatus',data.voiceStatus);
   if(data.settings){$('speakerPath').textContent=state.settings.speakerPath||'Speaker Embedding未選択';$('vrmPath').textContent=state.settings.modelPath||'VRM未選択：デモ表示';}
   if(data.reloadMotions)refreshMotionOptions();
