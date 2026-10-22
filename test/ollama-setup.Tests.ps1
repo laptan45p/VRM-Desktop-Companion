@@ -34,3 +34,6 @@ $calls.Clear(); $scenario = 'timeout'; $failed = $false
 try { Install-OllamaModel 'Fake-Ollama' $Models[0] } catch { $failed = $true }
 Assert-Test ($failed -and $calls.Count -eq 2) 'Network failures must stop without unrelated fallback downloads.'
 Write-Host 'Ollama setup smoke tests passed.'
+
+# The expected failing mock must not become the CI shell exit code.
+$global:LASTEXITCODE = 0
