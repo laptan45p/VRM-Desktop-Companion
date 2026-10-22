@@ -112,13 +112,18 @@ async function initControl(){
 }
 let scene,camera,renderer,vrm,demoRoot,modelRoot,clock,elapsed=0,loadId=0,blinkAt=2,blinkStart=-10;
 const faces=new window.companionExpressions.FaceExpressions();
+const speechFaces=new window.companionExpressions.SpeechExpressions(faces);
 let rest=new Map(),cloth=null,hands=null,orientationPreview=null,cancelInteraction=()=>{};
 let utteranceId=null,voiceText='';
 const speechAudio=new window.companionAudio.SpeechAudio(()=>new window.AudioContext({latencyHint:'interactive'}),(id,phase,error)=>{
- if(phase==='start'&&id===utteranceId)lips.play(voiceText,performance.now()/1000);
- if(phase==='ended'||phase==='error')lips.stop();api.voiceState(id,phase,error);
+ if(id===utteranceId){
+  if(phase==='start'){lips.play(voiceText,performance.now()/1000);speechFaces.start(id,elapsed);}
+  else if(phase==='ended'){lips.stop();speechFaces.end(id,elapsed);}
+  else if(phase==='error'){lips.play(voiceText,performance.now()/1000);speechFaces.fallback(id,elapsed,window.companionMotion.planSpeech(voiceText).duration);}
+ }
+ api.voiceState(id,phase,error);
 });
-function stopVoiceLocal(){speechAudio.stop();lips.stop();utteranceId=null;voiceText='';}
+function stopVoiceLocal(){speechAudio.stop();lips.stop();speechFaces.cancel(elapsed);utteranceId=null;voiceText='';}
 const motionPlayer=new window.companionVrma.VrmaPlayer(THREE);
 let motionGeneration=0,interacting=false,motionHoldUntil=0;
 async function loadMotions(){
@@ -369,16 +374,26 @@ api.onUpdate(data=>{
  if(!state)return;const before=state.settings;state={...state,...data};
  const rotationChanged=['angleX','angleY','angleZ'].some(k=>before[k]!==state.settings[k]);
  if(isMascot){
-  if(data.reply||data.greeting){const mood=data.mood||state.relationship?.mood||'happy';faces.trigger(mood==='calm'?'happy':mood,elapsed);}
+  if(data.reply||data.greeting){const mood=data.mood||state.relationship?.mood||'happy';speechFaces.setMood(mood,elapsed);}
   if(data.expressionPreview)faces.show(data.expressionPreview.name,data.expressionPreview.weight,elapsed);
   if(data.greeting)motionPlayer.greet();
   if(data.reaction){motionPlayer.interrupt(elapsed);motionHoldUntil=elapsed+3.5;}
   if(data.settings)motionPlayer.configure(state.settings,elapsed);
   if(data.reloadMotions)loadMotions();
-  if(data.reaction){reactionMotion.trigger(data.reaction.emotion,performance.now()/1000);faces.trigger(data.reaction.emotion,elapsed,3.5);}
+  if(data.reaction){reactionMotion.trigger(data.reaction.emotion,performance.now()/1000);speechFaces.setMood(data.reaction.emotion,elapsed,3.5);}
+  const failedCurrent=data.voiceFailed!==undefined&&data.voiceFailed===utteranceId;
   if(data.voiceStop||data.mascotVisible===false)stopVoiceLocal();
-  if(data.speech!==undefined){stopVoiceLocal();utteranceId=data.speechId??null;if(data.speech&&!data.thinking&&!data.ttsPending)lips.play(data.speech,performance.now()/1000);}
-  if(data.voiceFailed===utteranceId&&state.speech)lips.play(state.speech,performance.now()/1000);
+  if(data.speech!==undefined){
+   stopVoiceLocal();utteranceId=data.speechId??null;
+   if(data.speech&&!data.thinking&&state.mascotVisible!==false){
+    speechFaces.begin(utteranceId,elapsed,{pending:!!data.ttsPending,duration:window.companionMotion.planSpeech(data.speech).duration});
+    if(!data.ttsPending)lips.play(data.speech,performance.now()/1000);
+   }
+  }
+  if(failedCurrent&&state.speech&&state.mascotVisible!==false&&data.speech===undefined){
+   utteranceId=data.voiceFailed;lips.play(state.speech,performance.now()/1000);
+   speechFaces.begin(utteranceId,elapsed,{duration:window.companionMotion.planSpeech(state.speech).duration});
+  }
   if(data.voiceAudio&&data.voiceAudio.id===utteranceId&&state.mascotVisible!==false){voiceText=data.voiceAudio.text;lips.stop();speechAudio.play(data.voiceAudio);}
   if(data.settings&&!state.settings.ttsEnabled&&before.ttsEnabled)stopVoiceLocal();
   if(data.reloadVRM)loadVRM(true);

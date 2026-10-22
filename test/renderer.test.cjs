@@ -1,6 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const THREE=require('./bundle-runtime.cjs'),{DEFAULTS}=require('../src/backend.cjs'),layout=require('../src/layout.cjs');
 async function boot(view,withModel=false,audioFixture=null,modelFixture=null){
+ const faceControllers=[];const expressionModule=require('../src/expressions.cjs');
  const nodes=new Map(),listeners={},calls=[],rootEvents={},settings={...DEFAULTS,model:'test-local',modelPath:withModel?'fixture.vrm':''},events={};let notify,failSend=false,rendered,frame;
  const node=id=>{if(!nodes.has(id))nodes.set(id,{id,style:{},hidden:true,value:'',textContent:'',checked:false,disabled:false,children:[],clientWidth:440,clientHeight:518,scrollHeight:200,scrollTop:0,classList:{toggle(){},add(){}},append(...a){this.children.push(...a);},replaceChildren(){this.children=[];},add(o){this.children.push(o);},addEventListener(type,fn){this['on'+type]=fn;},getBoundingClientRect(){return {left:0,top:0,width:440,height:id==='speechCard'?120:518};},focus(){this.focused=true;},setPointerCapture(){this.capture=true;},hasPointerCapture(){return !!this.capture;},releasePointerCapture(){this.capture=false;},requestSubmit(){return this.onsubmit?.({preventDefault(){}});}});return nodes.get(id);};
  const ok=data=>Promise.resolve({ok:true,data});
@@ -12,11 +13,11 @@ async function boot(view,withModel=false,audioFixture=null,modelFixture=null){
   send:async text=>{calls.push(['send',text]);if(failSend)return {ok:false,error:'接続できません'};return {ok:true,data:'返事'};},cancel:()=>ok(),models:s=>{calls.push(['models',s]);return modelFixture?modelFixture(s):ok(['test-local']);},save:s=>{calls.push(['save',s]);return ok(s);}};
  class Renderer{constructor(){this.domElement={};}setClearColor(){}setPixelRatio(){}setSize(){}setAnimationLoop(cb){frame=cb;cb();}render(scene,camera){rendered={scene,camera};}}
  let now=0;const context={THREE:{...THREE,Clock:class{getDelta(){return .05;}},WebGLRenderer:Renderer},GLTFLoader:THREE.GLTFLoader,VRMLoaderPlugin:THREE.VRMLoaderPlugin,VRMUtils:THREE.VRMUtils,VRMAnimationLoaderPlugin:THREE.VRMAnimationLoaderPlugin,createVRMAnimationClip:THREE.createVRMAnimationClip,
-  window:{AudioContext:class{constructor(){if(!audioFixture)throw new Error('No audio fixture');return audioFixture.ctx;}},companionAudio:require('../src/speech-audio.cjs'),companionVrma:require('../src/vrma-player.cjs'),companion:api,companionLayout:layout,companionOrientation:require('../src/orientation.cjs'),companionPicking:require('../src/picking.cjs'),companionHand:withModel==='hand'?{HandDrag:class{begin(){return true;}move(v){calls.push(['handMove',v.x,v.y,v.z]);}release(){calls.push(['handRelease']);}reset(){}restore(){}update(){}}}:require('../src/hand.cjs'),companionExpressions:require('../src/expressions.cjs'),companionMotion:require('../src/motion.cjs'),companionInteraction:require('../src/interaction.cjs'),companionCloth:withModel==='cloth'?{ClothDrag:class{begin(){return true;}move(v){calls.push(['clothMove',v.x,v.y,v.z]);}release(){calls.push(['clothRelease']);}reset(){calls.push(['clothReset']);}restore(){}update(){}}}:require('../src/cloth.cjs'),addEventListener:(k,f)=>listeners[k]=f},document:{body:{className:'',dataset:{}},documentElement:{classList:{add(){}}},getElementById:node,createElement:()=>node('new-'+nodes.size),createTextNode:text=>({textContent:text}),addEventListener:(k,f)=>events[k]=f},location:{search:'?view='+view},URLSearchParams,
+  window:{AudioContext:class{constructor(){if(!audioFixture)throw new Error('No audio fixture');return audioFixture.ctx;}},companionAudio:require('../src/speech-audio.cjs'),companionVrma:require('../src/vrma-player.cjs'),companion:api,companionLayout:layout,companionOrientation:require('../src/orientation.cjs'),companionPicking:require('../src/picking.cjs'),companionHand:withModel==='hand'?{HandDrag:class{begin(){return true;}move(v){calls.push(['handMove',v.x,v.y,v.z]);}release(){calls.push(['handRelease']);}reset(){}restore(){}update(){}}}:require('../src/hand.cjs'),companionExpressions:{...expressionModule,FaceExpressions:class extends expressionModule.FaceExpressions{constructor(){super();faceControllers.push(this);}}},companionMotion:require('../src/motion.cjs'),companionInteraction:require('../src/interaction.cjs'),companionCloth:withModel==='cloth'?{ClothDrag:class{begin(){return true;}move(v){calls.push(['clothMove',v.x,v.y,v.z]);}release(){calls.push(['clothRelease']);}reset(){calls.push(['clothReset']);}restore(){}update(){}}}:require('../src/cloth.cjs'),addEventListener:(k,f)=>listeners[k]=f},document:{body:{className:'',dataset:{}},documentElement:{classList:{add(){}}},getElementById:node,createElement:()=>node('new-'+nodes.size),createTextNode:text=>({textContent:text}),addEventListener:(k,f)=>events[k]=f},location:{search:'?view='+view},URLSearchParams,
   performance:{now:()=>now+=50},devicePixelRatio:1,ResizeObserver:class{constructor(fn){this.fn=fn;}observe(){}},requestAnimationFrame:fn=>fn(),Option:class{constructor(text,value){this.text=text;this.value=value;}},console,confirm:()=>true};
  const code=fs.readFileSync(path.join(__dirname,'../src/renderer.js'),'utf8').split('\n').filter(l=>!l.startsWith('import ')).join('\n');
  vm.runInNewContext(code,context);await new Promise(r=>setImmediate(r));
- return {node,calls,notify,listeners,events,rendered,tick:()=>frame?.(),advance:()=>now+=200,setFailure:v=>failSend=v};
+ return {node,calls,notify,listeners,events,rendered,faceControllers,tick:()=>frame?.(),advance:()=>now+=200,setFailure:v=>failSend=v};
 }
 test('input keeps failed text, supports IME-safe Enter and Escape, and stays open for successive messages',async()=>{
  const {node,calls,setFailure}=await boot('input');assert.equal(node('inputPanel').hidden,false);
@@ -227,4 +228,22 @@ test('mascot publishes loaded expressions, previews them and releases them witho
  notify({expressionPreview:{name:'happy',weight:.8}});tick();
  notify({expressionPreview:{name:'',weight:0}});for(let i=0;i<30;i++)tick();
  assert.ok(!calls.some(c=>c[0]==='modelStatus'));
+});
+
+test('facial expression waits for actual audio, stays through playback and fades after ending',async()=>{
+ const f=require('./audio-context.cjs')(),b=await boot('mascot',true,f),faces=b.faceControllers[0],m=faces.manager;
+ b.notify({reply:'こんにちは',mood:'happy'});b.notify({speech:'こんにちは',speechId:10,ttsPending:true});
+ for(let i=0;i<140;i++)b.tick();assert.equal(m.getValue('happy'),0);
+ b.notify({voiceAudio:{id:10,data:[1],text:'こんにちは',volume:1}});await new Promise(r=>setImmediate(r));
+ for(let i=0;i<180;i++)b.tick();assert.ok(m.getValue('happy')>0);
+ f.ctx.sources[0].onended();for(let i=0;i<60;i++)b.tick();assert.equal(m.getValue('happy'),0);
+});
+test('audio errors with voiceStop fall back to text expressions; stale or hidden audio cannot restore them',async()=>{
+ const f=require('./audio-context.cjs')(),b=await boot('mascot',true,f),faces=b.faceControllers[0],m=faces.manager;
+ b.notify({reply:'こんにちは',mood:'happy'});b.notify({speech:'こんにちは',speechId:20,ttsPending:true});
+ b.notify({voiceStop:true,voiceFailed:20});for(let i=0;i<6;i++)b.tick();assert.ok(m.getValue('happy')>0);
+ b.notify({voiceStop:true});for(let i=0;i<50;i++)b.tick();assert.equal(m.getValue('happy'),0);
+ b.notify({voiceAudio:{id:20,data:[1],text:'old'}});await new Promise(r=>setImmediate(r));assert.equal(f.ctx.sources.length,0);
+ b.notify({speech:'新しい返事',speechId:21,ttsPending:true});b.notify({mascotVisible:false});
+ b.notify({voiceAudio:{id:21,data:[1],text:'hidden'}});await new Promise(r=>setImmediate(r));for(let i=0;i<30;i++)b.tick();assert.equal(m.getValue('happy'),0);assert.equal(f.ctx.sources.length,0);
 });

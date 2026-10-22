@@ -46,3 +46,38 @@ test('VRM1 supports custom previews and safely falls back when emotion expressio
  faces.show('ハート',.6,2);faces.update(2.1,.1);assert.equal(vrm.expressionManager.getValue('ハート'),.6);
  faces.show('',0,2.2);for(let i=0;i<25;i++)faces.update(6+i*.1,.1);assert.equal(vrm.expressionManager.getValue('ハート'),0);VRMUtils.deepDispose(vrm.scene);
 });
+
+test('speech expressions wait through long generation and remain for long audio until completion',()=>{
+ const {SpeechExpressions}=require('../src/expressions.cjs');
+ const values={},faces=new FaceExpressions();faces.bind({expressionManager:{expressions:[{expressionName:'happy'}],setValue:(name,v)=>values[name]=v}});
+ const speech=new SpeechExpressions(faces);speech.setMood('happy',0);speech.begin(10,0,{pending:true});
+ for(let i=0;i<100;i++)faces.update(i,.1);assert.equal(values.happy||0,0);
+ speech.start(10,100);for(let i=0;i<30;i++)faces.update(100+i,.1);assert.ok(values.happy>.49);
+ speech.end(10,130);faces.update(130.5,.1);assert.ok(values.happy>.49);
+ for(let i=0;i<30;i++)faces.update(131+i*.1,.1);assert.equal(values.happy,0);
+});
+test('stopped and replaced speech ignores stale playback callbacks',()=>{
+ const {SpeechExpressions}=require('../src/expressions.cjs');
+ const values={},faces=new FaceExpressions();faces.bind({expressionManager:{expressions:[{expressionName:'happy'}],setValue:(n,v)=>values[n]=v}});
+ const speech=new SpeechExpressions(faces);speech.begin(1,0,{pending:true});speech.start(1,1);faces.update(1,.1);assert.ok(values.happy>0);
+ speech.cancel(2);speech.start(1,3);for(let i=0;i<20;i++)faces.update(3+i,.1);assert.equal(values.happy,0);
+ speech.begin(2,30,{pending:true});speech.end(1,31);speech.start(1,32);faces.update(32,.1);assert.equal(values.happy,0);
+ speech.start(2,33);faces.update(33,.1);assert.ok(values.happy>0);
+});
+test('text-only and failed audio expressions expire with text duration and respect previews',()=>{
+ const {SpeechExpressions}=require('../src/expressions.cjs');
+ const values={},faces=new FaceExpressions();faces.bind({expressionManager:{expressions:[{expressionName:'happy'},{expressionName:'ハート'}],setValue:(n,v)=>values[n]=v}});
+ const speech=new SpeechExpressions(faces);speech.begin(1,0,{pending:true});speech.fallback(1,20,8);faces.update(25,.1);assert.ok(values.happy>0);
+ faces.show('ハート',.8,25);faces.update(25,.1);assert.equal(values['ハート'],.8);assert.equal(values.happy,0);
+ for(let i=0;i<40;i++)faces.update(31+i*.1,.1);assert.equal(values.happy,0);assert.equal(values['ハート'],0);
+ speech.begin(2,40,{duration:10});faces.update(45,.1);assert.ok(values.happy>0);
+ for(let i=0;i<25;i++)faces.update(51+i*.1,.1);assert.equal(values.happy,0);
+});
+test('mood changes before or after speech messages retain pending/playback timing',()=>{
+ const {SpeechExpressions}=require('../src/expressions.cjs');
+ const values={},faces=new FaceExpressions();faces.bind({expressionManager:{expressions:[{expressionName:'happy'},{expressionName:'angry'}],setValue:(n,v)=>values[n]=v}});
+ const speech=new SpeechExpressions(faces);speech.begin(1,0,{pending:true});speech.setMood('angry',10);faces.update(10,.1);assert.equal(values.angry||0,0);
+ speech.start(1,20);faces.update(20,.1);assert.ok(values.angry>0);
+ speech.setMood('calm',25);for(let i=0;i<20;i++)faces.update(25+i*.1,.1);assert.ok(values.happy>.49);assert.equal(values.angry,0);
+ speech.end(1,28);for(let i=0;i<20;i++)faces.update(30+i*.1,.1);assert.equal(values.happy,0);
+});

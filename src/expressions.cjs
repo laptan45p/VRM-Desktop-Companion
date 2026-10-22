@@ -49,5 +49,37 @@
    }
   }
  }
- return {FaceExpressions};
+ // Keep speech timing separate from facial blending and manual previews.
+ class SpeechExpressions{
+  constructor(faces){this.faces=faces;this.mood='happy';this.utterance=null;}
+  setMood(mood,now,duration=4){
+   this.mood=mood==='calm'?'happy':mood;
+   const current=this.utterance;
+   if(current){
+    current.mood=this.mood;
+    if(current.phase==='pending')return;
+    if(current.phase==='playing'){this.faces.trigger(this.mood,now,Infinity);return;}
+    if(now<current.until){this.faces.trigger(this.mood,now,current.until-now);return;}
+   }
+   this.faces.trigger(this.mood,now,duration);
+  }
+  begin(id,now,{pending=false,duration=0}={}){
+   this.utterance={id,mood:this.mood,phase:pending?'pending':'text',until:now+duration+.7};
+   this.faces.trigger(this.mood,now,pending?0:duration+.7);
+  }
+  start(id,now){
+   const current=this.utterance;if(!current||current.id!==id||current.phase!=='pending')return;
+   current.phase='playing';this.faces.trigger(current.mood,now,Infinity);
+  }
+  end(id,now){
+   const current=this.utterance;if(!current||current.id!==id||current.phase!=='playing')return;
+   this.utterance=null;this.faces.trigger(current.mood,now,.7);
+  }
+  fallback(id,now,duration){
+   if(this.utterance?.id!==id)return;
+   this.begin(id,now,{duration});
+  }
+  cancel(now){this.utterance=null;this.faces.trigger(this.mood,now,0);}
+ }
+ return {FaceExpressions,SpeechExpressions};
 });
