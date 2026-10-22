@@ -40,7 +40,13 @@ function Ensure-Ollama {
     try {
         Write-Host 'Ollama公式インストーラーを取得します。開いた画面でインストールしてください。'
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest 'https://ollama.com/download/OllamaSetup.exe' -OutFile $setup -UseBasicParsing
+        # Windows PowerShell 5.1 redraws byte progress very frequently on large downloads.
+        $previousProgress = $ProgressPreference
+        try {
+            $ProgressPreference = 'SilentlyContinue'
+            Invoke-WebRequest 'https://ollama.com/download/OllamaSetup.exe' -OutFile $setup -UseBasicParsing
+        } finally { $ProgressPreference = $previousProgress }
+        Write-Host 'Ollama本体の取得が完了しました。インストーラーを確認しています。'
         if ((Get-AuthenticodeSignature -LiteralPath $setup).Status -ne 'Valid') { throw 'インストーラーの電子署名を確認できません。https://ollama.com/download/windows から手動で導入してください。' }
         $process = Start-Process -FilePath $setup -Wait -PassThru
         if ($process.ExitCode -ne 0) { throw 'Ollamaのインストールが完了しませんでした。再実行してください。' }
