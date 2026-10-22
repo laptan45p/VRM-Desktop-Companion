@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('companion', {
   motionList:()=>ipcRenderer.invoke('motion-list'),
   motionData:name=>ipcRenderer.invoke('motion-data',name),
   expressionCatalog:()=>ipcRenderer.invoke('expression-catalog'),
+  mascotReady:()=>ipcRenderer.invoke('mascot-ready'),
   expressionReady:(modelPath,names)=>ipcRenderer.invoke('expression-ready',modelPath,names),
   previewExpression:(modelPath,name,weight)=>ipcRenderer.invoke('expression-preview',modelPath,name,weight),
   keyStatus:s=>ipcRenderer.invoke('key-status',s),

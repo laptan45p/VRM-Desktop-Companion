@@ -1,6 +1,6 @@
 'use strict';
 const voices=require('./voice-bindings.cjs');
-const {farewell}=require('./farewell.cjs');
+const {farewell,greeting}=require('./farewell.cjs');
 const relationship=require('./relationship.cjs');
 const motionFiles=require('./vrma-files.cjs');
 const {ApiKeys}=require('./api-keys.cjs');
@@ -9,6 +9,14 @@ const {ReactionCounter}=require('./interaction.cjs');
 const reactions=new ReactionCounter();
 let expressionNames=[];
 let goodbye=null,goodbyeTimer=null;
+let startupGreetingDone=false,startupWindowsReady=false,startupMascotReady=false;
+function greetOnStartup(){
+ if(startupGreetingDone||!startupWindowsReady||!startupMascotReady)return;
+ startupGreetingDone=true;
+ // Never replace an error, an existing conversation, or an exit greeting.
+ if(goodbye||startupError||active||speech)return;
+ speak(greeting());broadcast({greeting:true,mood:'happy'});
+}
 const {TouchResponder}=require('./touch-response.cjs');
 const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,screen,safeStorage}=require('electron');
 const fs=require('node:fs/promises'),path=require('node:path');
@@ -186,7 +194,7 @@ if(gotLock)app.whenReady().then(async()=>{
  if(!globalShortcut.register('CommandOrControl+Alt+C',showInput))startupError+=' Ctrl+Alt+Cを登録できませんでした。';
  // Creation/first show can adjust a native window's placement. Restore the
  // saved rectangle after showing, rather than recentering around adjusted bounds.
- applyHit();mascot.showInactive();mascot.setBounds(mascotLocation,false);capturePosition(mascot,'mascot');positionPopups();if(startupError)speak(startupError,{voice:false});
+ applyHit();mascot.showInactive();mascot.setBounds(mascotLocation,false);capturePosition(mascot,'mascot');positionPopups();if(startupError)speak(startupError,{voice:false});startupWindowsReady=true;greetOnStartup();
 });
 app.on('second-instance',()=>{if(input)showInput();});
 app.on('before-quit',()=>{
@@ -223,6 +231,9 @@ handle('choose-motions',async()=>{
 },()=>control);
 handle('motion-list',()=>motionFiles.catalog(store.data.settings.motionFolder));
 handle('expression-catalog',()=>({modelPath:store.data.settings.modelPath,names:expressionNames}),()=>control);
+handle('mascot-ready',()=>{
+ startupMascotReady=true;greetOnStartup();
+},()=>mascot);
 handle('expression-ready',(modelPath,names)=>{
  if(modelPath!==store.data.settings.modelPath)return;
  if(!Array.isArray(names)||names.length>5000||names.some(n=>typeof n!=='string'||!n||n.length>256))throw new Error('表情一覧が不正です。');

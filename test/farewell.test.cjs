@@ -7,3 +7,11 @@ test('farewell varies with random selection and reserves good night for local ni
  for(const hour of [5,20])assert.doesNotMatch(farewell(at(hour),()=>.8),/おやすみ/);
  for(const value of [-1,1,NaN,Infinity])assert.equal(typeof farewell(at(12),()=>value),'string');
 });
+
+test('startup greeting varies with local morning, afternoon and evening',()=>{
+ const {greeting}=require('../src/farewell.cjs'),at=hour=>new Date(2026,9,22,hour);
+ for(const hour of [5,10])assert.match(greeting(at(hour),()=>0),/おはよう/);
+ for(const hour of [11,17])assert.match(greeting(at(hour),()=>0),/こんにちは/);
+ for(const hour of [0,4,18,23])assert.match(greeting(at(hour),()=>0),/こんばんは/);
+ for(const hour of [8,12,20])assert.equal(new Set([0,.4,.8].map(n=>greeting(at(hour),()=>n))).size,3);
+});

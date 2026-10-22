@@ -202,7 +202,7 @@ async function loadVRM(announce=false){
  faces.bind(null);api.expressionReady(state.settings.modelPath,[]);
  stopVoiceLocal();cancelInteraction();++motionGeneration;motionPlayer.dispose();
  const id=++loadId;
- if(!state.settings.modelPath)return;
+ if(!state.settings.modelPath)return true;
  
  let candidate;
  try{
@@ -227,7 +227,8 @@ async function loadVRM(announce=false){
  rest=window.companionMotion.capturePose(vrm);lips.stop();cloth=new window.companionCloth.ClothDrag(vrm,THREE.Vector3,state.settings);hands=new window.companionHand.HandDrag(vrm,THREE.Vector3);
  applyOrientation(modelRoot);fitModel(modelRoot);loadMotions();
  if(announce)api.modelStatus('準備できたよ。話しかけてね。');
- }catch(e){if(candidate&&candidate!==vrm)VRMUtils.deepDispose(candidate.scene);api.modelStatus('VRMを読み込めませんでした：'+e.message);}
+ return true;
+ }catch(e){if(candidate&&candidate!==vrm)VRMUtils.deepDispose(candidate.scene);api.modelStatus('VRMを読み込めませんでした：'+e.message);return false;}
 }
 function initMascot(){
 
@@ -238,7 +239,7 @@ function initMascot(){
  demoRoot=createDemo();resizeViewport();
  new ResizeObserver(resizeViewport).observe($('avatar'));
  window.addEventListener('resize',resizeViewport);
- initCharacterMouse();clock=new THREE.Clock();loadVRM();
+ initCharacterMouse();clock=new THREE.Clock();loadVRM().then(ready=>{if(ready===true)api.mascotReady();});
  renderer.setAnimationLoop(()=>{
  const dt=Math.min(clock.getDelta(),.05);elapsed+=dt;
  const root=vrm?.scene||demoRoot;
