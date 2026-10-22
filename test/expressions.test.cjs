@@ -81,3 +81,9 @@ test('mood changes before or after speech messages retain pending/playback timin
  speech.setMood('calm',25);for(let i=0;i<20;i++)faces.update(25+i*.1,.1);assert.ok(values.happy>.49);assert.equal(values.angry,0);
  speech.end(1,28);for(let i=0;i<20;i++)faces.update(30+i*.1,.1);assert.equal(values.happy,0);
 });
+
+test('Japanese shy morph is used instead of happy when blush is named tere',()=>{
+ const values={},faces=new FaceExpressions();faces.bind({expressionManager:{expressions:[{expressionName:'happy'},{expressionName:'照れ'}],setValue:(name,value)=>values[name]=value}});
+ faces.trigger('shy',0);for(let i=0;i<12;i++)faces.update(i*.05,.05);
+ assert.ok(values['照れ']>.59);assert.equal(values.happy||0,0);
+});

@@ -7,7 +7,7 @@
   calm:[[['relaxed','fun'],.25]],
   angry:[[['angry','怒り'],.8]],
   sad:[[['sad','sorrow','困る'],.6]],
-  shy:[[['blush','shy','embarrassed','赤面','チーク','happy'],.6]],
+  shy:[[['blush','shy','embarrassed','赤面','チーク','照れ','照れ顔','happy'],.6]],
   surprised:[[['surprised','びっくり','びっくり2'],.8]],
  };
  const normalize=s=>String(s).normalize('NFKC').trim().toLowerCase();
