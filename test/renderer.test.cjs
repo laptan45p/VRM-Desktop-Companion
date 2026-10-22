@@ -272,17 +272,7 @@ test('VRM changes refresh character fields even with unsaved global settings',as
  assert.equal(node('endpoint').value,'http://127.0.0.1:11999');await node('settingsForm').onsubmit({preventDefault(){}});const saved=calls.findLast(c=>c[0]==='save')[1];assert.equal(saved.name,'Bの子');assert.equal(saved.selfPronoun,'あたし');assert.equal(saved.userAddress,'相棒');
 });
 
-test('quality form saves and mascot updates resolution without reloading model',async()=>{
- const control=await boot('control');assert.equal(control.node('renderQuality').value,'high');
- control.node('renderQuality').value='low';
- await control.node('settingsForm').onsubmit({preventDefault(){}});
- assert.equal(control.calls.find(c=>c[0]==='save')[1].renderQuality,'low');
+test('mascot always renders with high resolution',async()=>{
  const mascot=await boot('mascot',true);
  assert.equal(mascot.calls.filter(c=>c[0]==='pixelRatio').at(-1)[1],2);
- const ready=mascot.calls.filter(c=>c[0]==='expressionReady').length;
- for(const [quality,ratio] of [['medium',1],['low',.75],['high',2]]){
-  mascot.notify({settings:{...DEFAULTS,modelPath:'fixture.vrm',renderQuality:quality}});
-  assert.equal(mascot.calls.filter(c=>c[0]==='pixelRatio').at(-1)[1],ratio);
- }
- assert.equal(mascot.calls.filter(c=>c[0]==='expressionReady').length,ready);
 });
