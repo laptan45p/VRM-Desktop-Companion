@@ -37,3 +37,32 @@ Write-Host 'Ollama setup smoke tests passed.'
 
 # The expected failing mock must not become the CI shell exit code.
 $global:LASTEXITCODE = 0
+
+# Exercise streaming without a network download or an Ollama installation.
+$rendered = New-Object System.Collections.Generic.List[string]
+function Write-Host { param($Object, [switch]$NoNewline); $rendered.Add([string]$Object) }
+$payload = New-Object byte[] 150000
+$payload[0] = 42; $payload[149999] = 99
+foreach ($total in @($payload.Length, -1)) {
+    $source = New-Object IO.MemoryStream
+    $target = New-Object IO.MemoryStream
+    try {
+        $source.Write($payload, 0, $payload.Length); $source.Position = 0
+        $rendered.Clear()
+        Copy-InstallerStream $source $target $total
+        Assert-Test ([Convert]::ToBase64String($target.ToArray()) -eq [Convert]::ToBase64String($payload)) 'Streaming corrupted the downloaded bytes.'
+        Assert-Test ($rendered.Count -eq 3) 'A fast transfer should render only start, completion, and newline.'
+        Assert-Test ($rendered[1] -match '100%') 'Only a complete transfer should reach 100%.'
+        if ($total -eq -1) { Assert-Test ($rendered[0] -match '\.\.\.') 'Unknown-length transfer needs an indeterminate display.' }
+    } finally { $source.Dispose(); $target.Dispose() }
+}
+$source = New-Object IO.MemoryStream
+$target = New-Object IO.MemoryStream
+try {
+    $rendered.Clear(); $failed = $false
+    try { Copy-InstallerStream $source $target 100 } catch { $failed = $true }
+    Assert-Test $failed 'Truncated downloads must fail.'
+    Assert-Test (-not (($rendered -join '') -match '100%')) 'Truncated downloads must not report completion.'
+} finally { $source.Dispose(); $target.Dispose(); Remove-Item Function:\Write-Host }
+Write-Host 'Download streaming and progress tests passed.'
+$global:LASTEXITCODE = 0

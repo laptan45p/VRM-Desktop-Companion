@@ -33,6 +33,58 @@ function Get-DefaultModelIndex($MiB) {
     if ($null -ne $MiB -and [math]::Round($MiB / 1024) -ge 16) { return 1 }
     return 0
 }
+function Write-DownloadBar([long]$Received, [long]$Total, [switch]$Complete) {
+    # ASCII only on the changing line; CJK text remains on fixed lines.
+    if ($Complete) { $percent = 100 }
+    elseif ($Total -gt 0) { $percent = [int][math]::Floor([math]::Min(99, 100.0 * $Received / $Total)) }
+    else { Write-Host "`rDownloading [          ...           ]      " -NoNewline; return }
+    $filled = [int][math]::Floor($percent * 24 / 100)
+    $bar = ('#' * $filled) + ('-' * (24 - $filled))
+    Write-Host ("`rDownloading [{0}] {1,3}% " -f $bar, $percent) -NoNewline
+}
+function Copy-InstallerStream($Source, $Destination, [long]$Total = -1) {
+    $buffer = New-Object byte[] 65536
+    $received = 0L
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $cancel = New-Object Threading.CancellationTokenSource
+    try {
+        Write-DownloadBar 0 $Total
+        while ($true) {
+            # Reset the idle timeout for each read, so slow but active transfers continue.
+            $cancel.CancelAfter(120000)
+            $count = $Source.ReadAsync($buffer, 0, $buffer.Length, $cancel.Token).GetAwaiter().GetResult()
+            if ($count -eq 0) { break }
+            $Destination.Write($buffer, 0, $count)
+            $received += $count
+            if ($clock.ElapsedMilliseconds -ge 1000) {
+                Write-DownloadBar $received $Total
+                $clock.Restart()
+            }
+        }
+        if ($Total -ge 0 -and $received -ne $Total) { throw 'ダウンロードが途中で終了しました。もう一度実行してください。' }
+        Write-DownloadBar $received $Total -Complete
+    } finally { $cancel.Dispose(); Write-Host '' }
+}
+function Receive-OllamaInstaller([string]$Url, [string]$Destination) {
+    Add-Type -AssemblyName System.Net.Http
+    $client = New-Object Net.Http.HttpClient
+    $response = $null; $source = $null; $target = $null
+    try {
+        $client.Timeout = [TimeSpan]::FromSeconds(120)
+        $response = $client.GetAsync($Url, [Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+        $response.EnsureSuccessStatusCode() | Out-Null
+        $length = $response.Content.Headers.ContentLength
+        if ($null -eq $length) { $length = -1 }
+        $source = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+        $target = [IO.File]::Create($Destination)
+        Copy-InstallerStream $source $target $length
+    } finally {
+        if ($target) { $target.Dispose() }
+        if ($source) { $source.Dispose() }
+        if ($response) { $response.Dispose() }
+        $client.Dispose()
+    }
+}
 function Ensure-Ollama {
     $exe = Find-Ollama
     if ($exe) { return $exe }
@@ -40,12 +92,7 @@ function Ensure-Ollama {
     try {
         Write-Host 'Ollama公式インストーラーを取得します。開いた画面でインストールしてください。'
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        # Windows PowerShell 5.1 redraws byte progress very frequently on large downloads.
-        $previousProgress = $ProgressPreference
-        try {
-            $ProgressPreference = 'SilentlyContinue'
-            Invoke-WebRequest 'https://ollama.com/download/OllamaSetup.exe' -OutFile $setup -UseBasicParsing
-        } finally { $ProgressPreference = $previousProgress }
+        Receive-OllamaInstaller 'https://ollama.com/download/OllamaSetup.exe' $setup
         Write-Host 'Ollama本体の取得が完了しました。インストーラーを確認しています。'
         if ((Get-AuthenticodeSignature -LiteralPath $setup).Status -ne 'Valid') { throw 'インストーラーの電子署名を確認できません。https://ollama.com/download/windows から手動で導入してください。' }
         $process = Start-Process -FilePath $setup -Wait -PassThru
