@@ -35,12 +35,13 @@ async function refreshKeyStatus(){
  try{const result=await call(api.keyStatus(settingsFromForm()));if(serial!==keyRequest)return;keyAvailable=result.available;keySaved=result.saved;status('keyStatus',result.saved?'この接続先に登録済み（キーは表示しません）':result.available?'この接続先のAPIキーは未登録です。':'OSの暗号化機能を利用できません。',!result.available);$('saveKey').disabled=busy||!result.available;$('deleteKey').disabled=busy||!result.saved;}
  catch(e){if(serial===keyRequest)status('keyStatus',e.message,true);}
 }
-function updateProviderUI(){const provider=$('provider').value,cloud=cloudProvider(provider);$('cloudSettings').hidden=!cloud;$('endpoint').readOnly=provider==='openai'||provider==='openrouter';$('openrouterHelp').hidden=provider!=='openrouter';$('model').placeholder=provider==='openrouter'?'例：anthropic/claude-haiku-5.5':'モデルIDを選択・直接入力';$('tokenParamLabel').hidden=provider!=='compatible';$('connectionBadge').textContent=cloud?'クラウドLLM':'ローカル接続';if(cloud)refreshKeyStatus();else{keyRequest++;$('apiKey').value='';}}
+function modelListButtonText(){return cloudProvider($('provider').value)?'モデル一覧を取得':'導入済みモデル一覧を取得';}
+function updateProviderUI(){const provider=$('provider').value,cloud=cloudProvider(provider);$('cloudSettings').hidden=!cloud;$('endpoint').readOnly=provider==='openai'||provider==='openrouter';$('openrouterHelp').hidden=provider!=='openrouter';$('model').placeholder=provider==='openrouter'?'例：anthropic/claude-haiku-5.5':'モデルIDを選択・直接入力';$('tokenParamLabel').hidden=provider!=='compatible';$('connectionBadge').textContent=cloud?'クラウドLLM':'ローカル接続';if(!fetchingModels)$('fetchModels').textContent=modelListButtonText();$('localModelHelp').hidden=cloud;if(cloud)refreshKeyStatus();else{keyRequest++;$('apiKey').value='';}}
 function setModels(models,selected,showList=false){
  $('modelOptions').replaceChildren();$('modelList').replaceChildren();for(const m of models){$('modelOptions').append(new Option(m,m));$('modelList').add(new Option(m,m));}
  $('model').value=selected||'';$('modelList').value=selected||'';$('modelListLabel').hidden=!showList||!models.length;
 }
-function invalidateModels(){modelRequest++;fetchingModels=false;$('fetchModels').textContent='モデル一覧を取得';$('fetchModels').disabled=busy;$('modelListLabel').hidden=true;status('connectionStatus','');}
+function invalidateModels(){modelRequest++;fetchingModels=false;$('fetchModels').textContent=modelListButtonText();$('fetchModels').disabled=busy;$('modelListLabel').hidden=true;status('connectionStatus','');}
 
 const historyViews=new WeakMap();
 function renderHistory(id='history',follow=false){
@@ -88,9 +89,9 @@ async function initControl(){
   if(fetchingModels||busy)return;const request=++modelRequest;fetchingModels=true;$('fetchModels').disabled=true;$('fetchModels').textContent='取得中…';status('connectionStatus','モデル一覧を取得中…（最大約10秒）');$('modelListLabel').hidden=true;
   try{
    const models=await call(api.models(settingsFromForm()));if(request!==modelRequest)return;
-   setModels(models,$('model').value,true);dirty=true;status('connectionStatus',models.length?`${models.length}件取得しました。下の一覧から選び、「設定を保存」を押してください。`:'一覧が空です。モデルIDを直接入力するか、接続先のモデルを確認してください。');
+   setModels(models,$('model').value,true);dirty=true;status('connectionStatus',models.length?`${models.length}件取得しました。下の一覧から選び、「設定を保存」を押してください。`:cloudProvider($('provider').value)?'一覧が空です。モデルIDを直接入力するか、接続先のモデルを確認してください。':'一覧が空です。接続先に導入済みモデルがありません。Ollamaの場合はinstall_ollama.batでモデルをダウンロードしてから、もう一度取得してください。');
   }catch(e){if(request===modelRequest)status('connectionStatus',e.message,true);}
-  finally{if(request===modelRequest){fetchingModels=false;$('fetchModels').disabled=busy;$('fetchModels').textContent='モデル一覧を取得';}}
+  finally{if(request===modelRequest){fetchingModels=false;$('fetchModels').disabled=busy;$('fetchModels').textContent=modelListButtonText();}}
  };
  $('settingsForm').onsubmit=async e=>{e.preventDefault();await wrap(async()=>{const s=await call(api.save(settingsFromForm()));state.settings=s;dirty=false;status('connectionStatus','設定を保存しました。');},'connectionStatus')();};
  $('loadVRM').onclick=wrap(async()=>{const p=await call(api.chooseVRM());if(p)status('chatStatus','VRMを読み込み中です。結果は吹き出しに表示します。');});
