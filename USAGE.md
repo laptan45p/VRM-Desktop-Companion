@@ -280,3 +280,9 @@ VRMを読み込むと、マウスとタッチで次の反応を行います。�
 ## 保存先
 
 Windowsの `%APPDATA%\vrm-desktop-companion\companion.json` に設定と会話を保存します。最大100往復を保存し、LLMには設定した範囲だけを送信します。VRMファイル自体はコピーせず、選んだファイルのパスを記憶します。
+
+
+
+## Ollamaをかんたん導入
+
+`install_ollama.bat`をダブルクリックすると、Ollamaの導入とVRAMに応じた初期モデルの取得ができます。詳しくは[Ollama導入手順](OLLAMA_SETUP.md)をご覧ください。

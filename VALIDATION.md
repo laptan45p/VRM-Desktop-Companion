@@ -184,3 +184,12 @@ Ctrl＋ホイールは描画側・IPCのテストで確認済みです。物理�
 TTS用Windows補助スクリプトの基本動作テストでは、Git・uv・GPU・ネットワーク処理をテスト用の代替処理に置き換えています。実際のWinGet導入、依存関係のダウンロード、GPU推論、利用者のSpeaker Embeddingによる動作をこのテストで確認したわけではありません。
 
 利用者からは、声の自動切り替えを追加する前の版で、実PC上のOpenAI会話とIrodori-TTS音声生成の成功報告を受けています。また、マウスによる回転とVRMAモーションの動作確認報告も受けています。VRMごとの声の自動切り替えはテスト用データで確認済みですが、実PCで再生する声が切り替わることは引き続き確認が必要です。
+
+
+
+## 0.1.35 Ollama導入補助
+
+- npm run build：成功。npm test：169件すべて成功。
+- 配布用3種ZIPの検査でinstall_ollama.bat、llm-tools/ollama_setup.ps1、OLLAMA_SETUP.mdの同梱、BATのCRLF、PowerShellのUTF-8 BOMを確認。
+- test/ollama-setup.Tests.ps1にVRAM判定、導入済みモデルの再利用、通常取得、Hugging Faceへの切り替えと別名登録、通信エラー時の停止を追加。Windows CIに組み込み済みですが、この変更時点では未実行。
+- Windows実機でのOllamaインストーラー起動、モデルの実ダウンロード、GPU推論は未確認。

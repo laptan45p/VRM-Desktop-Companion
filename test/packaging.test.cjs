@@ -20,12 +20,12 @@ report=[]
 for file in pathlib.Path(sys.argv[1]).glob('*.zip'):
  with zipfile.ZipFile(file) as z:
   prefix='' if file.name.endswith('-Update.zip') else 'VRM-Desktop-Companion/'
-  for name in ['install_irodori_tts.bat','start_irodori_tts.bat','tts-tools/irodori_server.ps1']:
+  for name in ['install_irodori_tts.bat','start_irodori_tts.bat','tts-tools/irodori_server.ps1','install_ollama.bat','llm-tools/ollama_setup.ps1']:
    data=z.read(prefix+name)
-   assert b'irodori_server.ps1' in data if name.endswith('.bat') else data.startswith(b'\\xef\\xbb\\xbf')
+   assert (b'ollama_setup.ps1' if name == 'install_ollama.bat' else b'irodori_server.ps1') in data if name.endswith('.bat') else data.startswith(b'\\xef\\xbb\\xbf')
    if name.endswith('.bat'): assert b'\\r\\n' in data and b'\\n' not in data.replace(b'\\r\\n',b'')
   docs=prefix+('update-files/resources/app/' if file.name.endswith('-Update.zip') else '')
-  for name in ['README.md','USAGE.md','UPDATE.md','TTS_SETUP.md']:
+  for name in ['README.md','USAGE.md','UPDATE.md','TTS_SETUP.md','OLLAMA_SETUP.md']:
    assert z.read(docs+name).decode('utf-8').strip()
   assert not any('Irodori-TTS-Server/.venv' in n or '/tts-logs/' in n for n in z.namelist())
   report.append(file.name)
@@ -33,3 +33,4 @@ print(json.dumps(report))`,output,root],{encoding:'utf8'});
   assert.equal(JSON.parse(report).length,3);
  }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });
+

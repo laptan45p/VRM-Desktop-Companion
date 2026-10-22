@@ -113,3 +113,9 @@ Windows版の作成は `npm run package:win` です。Gitにはソースを登�
 ## ライセンス
 
 アプリのソースはMITライセンスです。依存ソフトの条件は[THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)と配布ランタイムのライセンスをご確認ください。読み込むVRM・声・モーションなどは、それぞれの利用条件に従ってください。
+
+
+
+## Ollamaをかんたん導入
+
+`install_ollama.bat`をダブルクリックすると、Ollamaの導入とVRAMに応じた初期モデルの取得ができます。詳しくは[Ollama導入手順](OLLAMA_SETUP.md)をご覧ください。

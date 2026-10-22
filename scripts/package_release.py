@@ -10,7 +10,7 @@ from release_notes import release_notes
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = 'VRM-Desktop-Companion'
-DOCS = ['package.json', 'LICENSE', 'README.md', 'THIRD_PARTY_NOTICES.txt', 'UPDATE.md', 'VALIDATION.md', 'TTS_SETUP.md', 'USAGE.md']
+DOCS = ['package.json', 'LICENSE', 'README.md', 'THIRD_PARTY_NOTICES.txt', 'UPDATE.md', 'VALIDATION.md', 'TTS_SETUP.md', 'OLLAMA_SETUP.md', 'USAGE.md']
 
 def application(target):
     target.mkdir(parents=True, exist_ok=True)
@@ -21,11 +21,12 @@ def application(target):
 
 def tts_helpers(target):
     target.mkdir(parents=True, exist_ok=True)
-    for name in ['install_irodori_tts.bat', 'start_irodori_tts.bat']:
+    for name in ['install_irodori_tts.bat', 'start_irodori_tts.bat', 'install_ollama.bat']:
         # cmd.exe wrappers use CRLF in every release archive.
         content = (ROOT / name).read_text(encoding='utf-8').replace('\r\n', '\n')
         (target / name).write_bytes(content.replace('\n', '\r\n').encode('utf-8'))
-    shutil.copytree(ROOT / 'tts-tools', target / 'tts-tools', dirs_exist_ok=True)
+    for folder in ['tts-tools', 'llm-tools']:
+        shutil.copytree(ROOT / folder, target / folder, dirs_exist_ok=True)
 
 def archive(folder, dest, prefix=''):
     with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as z:
@@ -108,7 +109,7 @@ def main():
         if asar.exists():
             asar.unlink()
         application(old)
-        for name in ['README.md', 'UPDATE.md', 'VALIDATION.md', 'THIRD_PARTY_NOTICES.txt', 'TTS_SETUP.md', 'USAGE.md']:
+        for name in ['README.md', 'UPDATE.md', 'VALIDATION.md', 'THIRD_PARTY_NOTICES.txt', 'TTS_SETUP.md', 'OLLAMA_SETUP.md', 'USAGE.md']:
             shutil.copy2(ROOT / name, portable / name)
         tts_helpers(portable)
         archive(portable, out / f'{APP}-v{version}-Windows-x64.zip', APP)
@@ -134,4 +135,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
