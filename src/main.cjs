@@ -1,5 +1,6 @@
 'use strict';
 const voices=require('./voice-bindings.cjs');
+const {farewell}=require('./farewell.cjs');
 const relationship=require('./relationship.cjs');
 const motionFiles=require('./vrma-files.cjs');
 const {ApiKeys}=require('./api-keys.cjs');
@@ -7,6 +8,7 @@ const {VoiceLane,checkEmbedding}=require('./tts.cjs');
 const {ReactionCounter}=require('./interaction.cjs');
 const reactions=new ReactionCounter();
 let expressionNames=[];
+let goodbye=null,goodbyeTimer=null;
 const {TouchResponder}=require('./touch-response.cjs');
 const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,screen,safeStorage}=require('electron');
 const fs=require('node:fs/promises'),path=require('node:path');
@@ -18,7 +20,21 @@ const voiceLane=new VoiceLane({publish:audio=>{
  if(audio.id!==voiceId)return;voiceAwaiting=audio.id;clearTimeout(speechTimer);voiceStatus='音声の再生準備中…';broadcast({voiceStatus});
  mascot.webContents.send('update',{voiceAudio:audio});
  speechTimer=setTimeout(()=>finishVoice(audio.id,'error','音声の再生を開始できませんでした。'),15000);speechTimer.unref?.();
-},fail:(id,error)=>{if(id!==voiceId)return;voiceStatus=error+' 文字で表示します。';broadcast({voiceStatus,voiceFailed:id});armSpeechTimer();}});
+},fail:(id,error)=>{if(id!==voiceId)return;voiceStatus=error+' 文字で表示します。';broadcast({voiceStatus,voiceFailed:id});armSpeechTimer();if(goodbye?.id===id)scheduleGoodbyeExit(2000);}});
+function scheduleGoodbyeExit(delay){
+ clearTimeout(goodbyeTimer);goodbyeTimer=setTimeout(()=>{goodbyeTimer=null;if(goodbye?.finished)return;if(goodbye)goodbye.finished=true;cancelVoice(false);app.quit();},delay);goodbyeTimer.unref?.();
+}
+function requestQuit(){
+ if(goodbye)return;
+ if(!store||!mascot||mascot.isDestroyed()||!bubble||bubble.isDestroyed()){app.quit();return;}
+ goodbye={id:null,finished:false};active?.abort();touchResponses.cancel();drag=null;
+ control.hide();input.hide();mascot.showInactive();
+ const voiced=store.data.settings.ttsEnabled&&!!store.data.settings.speakerPath;
+ // Install the timeout before requesting audio, including synchronous failures.
+ scheduleGoodbyeExit(voiced?15000:2000);
+ speak(farewell(),{farewell:true});
+ broadcast({greeting:true,mood:'happy',farewell:true});
+}
 function cancelVoice(notify=true){voiceId=voiceLane.cancel();voiceAwaiting=null;voiceStatus='';if(notify){clearTimeout(speechTimer);if(speech)armSpeechTimer();broadcast({voiceStop:true,voiceStatus});}}
 function armSpeechTimer(delay=Math.max(7000,Math.min(45000,speech.length*110))){
  clearTimeout(speechTimer);speechTimer=setTimeout(()=>{speechTimer=null;speech='';bubble.hide();broadcast({speech:''});},delay);speechTimer.unref?.();
@@ -28,6 +44,7 @@ function finishVoice(id,phase,error=''){
  if(phase==='start'){voiceStatus='読み上げ中';speechTimer=setTimeout(()=>{cancelVoice();armSpeechTimer();},310000);speechTimer.unref?.();}
  else {voiceAwaiting=null;if(phase==='error')broadcast({voiceStop:true,voiceFailed:id});voiceStatus=phase==='error'?'音声を再生できません：'+String(error).slice(0,300):'';armSpeechTimer(7000);}
  broadcast({voiceStatus});
+ if(goodbye?.id===id)scheduleGoodbyeExit(phase==='start'?30000:phase==='ended'?700:2000);
 }
 const gotLock=app.requestSingleInstanceLock();if(!gotLock)app.quit();
 function credentials(settings){return isCloud(settings.provider)?keys.get(settings):'';}
@@ -86,9 +103,11 @@ function setPass(value){touchResponses.cancel();pass=!!value;drag=null;applyHit(
 function resetMascot(){resizeMascot(true);mascot.show();setPass(false);}
 function hideMascot(){cancelVoice();touchResponses.cancel();mascot.hide();bubble.hide();input.hide();drag=null;applyHit();broadcast({mascotVisible:false});}
 function hideSpeech(){cancelVoice();touchResponses.cancel();clearTimeout(speechTimer);speechTimer=null;speech='';bubble.hide();broadcast({speech:''});}
-function speak(text,{thinking=false,touch=false,voice=true}={}){
+function speak(text,{thinking=false,touch=false,voice=true,farewell=false}={}){
+ if(goodbye&&!farewell)return;
  if(!touch)touchResponses.cancel();
  cancelVoice(false);clearTimeout(speechTimer);speech=String(text).slice(0,12000);
+ if(farewell)goodbye.id=voiceId;
  const wantsVoice=!!(speech&&!thinking&&voice&&store.data.settings.ttsEnabled),useVoice=wantsVoice&&!!store.data.settings.speakerPath;
  voiceStatus=useVoice?'音声を生成中…':wantsVoice?'このVRMのSpeaker Embeddingは未登録です。文字で表示します。':'';broadcast({speech,thinking,speechId:voiceId,ttsPending:useVoice,voiceStatus});positionPopups();
  if(speech){bubble.showInactive();if(!thinking){if(useVoice)voiceLane.request(voiceId,{...store.data.settings,ttsCaption:[store.data.settings.ttsCaption,relationship.caption(relationship.current(store.data.relationships))].filter(Boolean).join('。')},speech);else armSpeechTimer();}}
@@ -96,6 +115,7 @@ function speak(text,{thinking=false,touch=false,voice=true}={}){
 }
 function showControl(tab='settings'){broadcast();control.show();control.webContents.send('update',{controlTab:tab});control.focus();}
 function showInput(){
+ if(goodbye)return;
  reactions.reset();
  mascot.show();positionPopups();speak(active?'ちょっと待ってね、考え中だよ。':relationship.greeting(relationship.current(store.data.relationships)),{thinking:!!active});
  broadcast({greeting:true});input.show();input.focus();input.webContents.send('update',{focusInput:true});
@@ -112,9 +132,10 @@ function menu(){return Menu.buildFromTemplate([
  {label:'位置をリセット',click:resetMascot},
  {label:'常に手前に表示（キャラクター・会話・吹き出し）',type:'checkbox',checked:store.data.settings.topmost,click:toggleTopmost},
  {label:'クリック操作を無効にする（Ctrl+Alt+M）',type:'checkbox',checked:pass,click:()=>setPass(!pass)},
- {type:'separator'},{label:'終了',click:()=>app.quit()}
+ {type:'separator'},{label:'終了',click:requestQuit}
 ]);}
 async function selectVRM(){
+ if(goodbye)return null;
  if(active)throw new Error('生成を停止してからVRMを変更してください。');
  const r=await dialog.showOpenDialog(mascot,{title:'VRMを選択',filters:[{name:'VRMモデル',extensions:['vrm']}],properties:['openFile']});
  if(r.canceled)return null;
@@ -169,11 +190,12 @@ if(gotLock)app.whenReady().then(async()=>{
 });
 app.on('second-instance',()=>{if(input)showInput();});
 app.on('before-quit',()=>{
+ clearTimeout(goodbyeTimer);goodbyeTimer=null;
  app.isQuitting=true;clearInterval(topmostInterval);topmostInterval=null;cancelVoice(false);touchResponses.cancel();active?.abort();clearTimeout(speechTimer);clearTimeout(inputSaveTimer);inputSaveTimer=null;
  if(store){for(const [w,prefix] of [[control,'control'],[mascot,'mascot'],[input,'input'],[bubble,'bubble']])capturePosition(w,prefix);captureDisplayAreas();try{store.save();}catch(e){console.error('終了時の位置を保存できません:',e.message);}}
 });
 app.on('will-quit',()=>globalShortcut.unregisterAll());app.on('window-all-closed',()=>app.quit());
-function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=>{if(!allWindows().some(w=>w.webContents===e.sender)||only&&e.sender!==only()?.webContents)throw new Error('不明なウィンドウです。');return fn(...args);}));}
+function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=>{if(!allWindows().some(w=>w.webContents===e.sender)||only&&e.sender!==only()?.webContents)throw new Error('不明なウィンドウです。');if(goodbye&&!['state','voice-state','model-status','hit','bubble-size'].includes(channel)&&!(channel==='action'&&['quit','stop-voice','close-bubble'].includes(args[0])))throw new Error('終了の挨拶中です。');return fn(...args);}));}
 handle('state',()=>({...store.data,version:app.getVersion?.()||'',relationships:undefined,voiceBindings:undefined,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus}));
 handle('save',settings=>{
  if(active)throw new Error('生成を停止してから設定を変更してください。');
@@ -287,11 +309,11 @@ handle('relationship',(operation,value)=>{
 handle('cancel',()=>{cancelVoice();touchResponses.cancel();active?.abort();});handle('clear',()=>{touchResponses.cancel();if(active)throw new Error('生成を停止してください。');store.data.history=[];store.save();broadcast();});
 handle('action',name=>{
  if(name==='test-voice'){if(!store.data.settings.ttsEnabled)throw new Error('読み上げを有効にして設定を保存してください。');if(!store.data.settings.speakerPath)throw new Error('このVRMのSpeaker Embeddingを選択してください。');speak('こんにちは。これから、この声でお話しするね。');}
- else if(name==='stop-voice'){cancelVoice();armSpeechTimer();}
+ else if(name==='stop-voice'){cancelVoice();armSpeechTimer();if(goodbye)scheduleGoodbyeExit(700);}
  else if(name==='test-motion'){speak('こんにちは。こんな感じでお話しするよ。よろしくね。');broadcast({greeting:true});}
  else if(name==='reset-bubble'){const b=bubble.getBounds();bubble.setBounds(popupBounds(mascot.getBounds(),b.width,b.height,area(),'bubble'),false);rememberPosition(bubble,'bubble');positionPopups();}
  else if(name==='control'||name==='settings')showControl('settings');else if(name==='history')showControl('chat');else if(name==='talk')showInput();
  else if(name==='menu')menu().popup({window:mascot});else if(name==='pass')setPass(!pass);else if(name==='hide')hideMascot();
- else if(name==='close-input')input.hide();else if(name==='close-bubble')hideSpeech();else if(name==='quit')app.quit();else if(name==='reset')resetMascot();
+ else if(name==='close-input')input.hide();else if(name==='close-bubble'){if(goodbye){cancelVoice();scheduleGoodbyeExit(700);}else hideSpeech();}else if(name==='quit')requestQuit();else if(name==='reset')resetMascot();
 });
 

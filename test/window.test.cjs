@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const {cleanSettings,DEFAULTS}=require('../src/backend.cjs');const layout=require('../src/layout.cjs');
 async function boot(saved={},touchGenerate=async()=>'LLMの反応',motionFiles=null,tts=null,llm=null,windowFixture=null){
  const area={x:-1600,y:0,width:1600,height:900},handlers=new Map(),windows=[],screen=new EventEmitter(),app=new EventEmitter(),menus=[],trays=[],timers=[],intervals=[];let savedData=null,fileChoice='/motions',saveError=false;
- Object.assign(app,{requestSingleInstanceLock:()=>true,whenReady:()=>Promise.resolve(),getPath:()=>'/test-data',setAppUserModelId:()=>{},quit:()=>{}});
+ Object.assign(app,{requestSingleInstanceLock:()=>true,whenReady:()=>Promise.resolve(),getPath:()=>'/test-data',setAppUserModelId:()=>{},quit:()=>{app.quitCalls=(app.quitCalls||0)+1;}});
  screen.getPrimaryDisplay=()=>({workArea:area});screen.getDisplayMatching=()=>({workArea:area});screen.getAllDisplays=()=>[{workArea:area}];
  class Window extends EventEmitter{
   constructor(options){super();this.options=options;this.visible=options.show!==false;this.events=[];this.bounds={x:options.x||0,y:options.y||0,width:options.width,height:options.height};if(windows.length===1&&windowFixture)this.bounds=windowFixture('create',this.bounds);this.webContents=new EventEmitter();Object.assign(this.webContents,{setWindowOpenHandler:()=>{},send:(event,value)=>this.events.push(value),session:{webRequest:{onBeforeRequest:()=>{}},setPermissionRequestHandler:()=>{}}});windows.push(this);}
@@ -10,7 +10,7 @@ async function boot(saved={},touchGenerate=async()=>'LLMの反応',motionFiles=n
  }
  class Store{constructor(){this.file='/test-data/companion.json';this.data={settings:{...DEFAULTS,scale:.5,...saved},history:[]};}load(){}save(){if(saveError)throw new Error('test disk failure');savedData=structuredClone(this.data);}}
  const electron={app,BrowserWindow:Window,ipcMain:{handle:(k,v)=>handlers.set(k,v)},dialog:{showOpenDialog:async()=>({canceled:false,filePaths:[fileChoice]})},Menu:{buildFromTemplate:v=>{const m={items:v,popup:()=>{m.opened=true;}};menus.push(m);return m;}},Tray:class extends EventEmitter{constructor(){super();trays.push(this);}setToolTip(){}popUpContextMenu(m){this.menu=m;}},nativeImage:{createFromPath:()=>({})},globalShortcut:{register:()=>true,unregisterAll:()=>{}},screen};
- const context={require:p=>p==='electron'?electron:p==='./api-keys.cjs'?{ApiKeys:class{constructor(){this.entries=new Map();}load(){}available(){return true;}scope(s){return s.provider+' '+require('../src/backend.cjs').llmBase(s);}has(s){return this.entries.has(this.scope(s));}get(s){return this.entries.get(this.scope(s))||'';}set(s,key){this.entries.set(this.scope(s),key);}delete(s){this.entries.delete(this.scope(s));}}}:p==='./tts.cjs'?(tts||require('../src/tts.cjs')):p==='./vrma-files.cjs'?(motionFiles||require('../src/vrma-files.cjs')):p==='./backend.cjs'?{Store,cleanSettings,isCloud:require('../src/backend.cjs').isCloud,llmBase:require('../src/backend.cjs').llmBase,chat:llm?.chat|| (async(_s,_h,t)=>'返事：'+t),listModels:llm?.listModels||(async()=>[]),touchReply:touchGenerate}:p==='./voice-bindings.cjs'?require('../src/voice-bindings.cjs'):p==='./relationship.cjs'?require('../src/relationship.cjs'):p==='./layout.cjs'?layout:p==='./interaction.cjs'?require('../src/interaction.cjs'):p==='./touch-response.cjs'?{TouchResponder:class extends require('../src/touch-response.cjs').TouchResponder{constructor(options){super({...options,setTimer:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimer:()=>{}});}}}:require(p),__dirname:path.resolve(__dirname,'../src'),setInterval:(fn,ms)=>{const t={fn,ms,unref(){}};intervals.push(t);return t;},clearInterval:t=>{if(t)t.cleared=true;},structuredClone,AbortController,console,setTimeout:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimeout:()=>{}};
+ const context={require:p=>p==='electron'?electron:p==='./api-keys.cjs'?{ApiKeys:class{constructor(){this.entries=new Map();}load(){}available(){return true;}scope(s){return s.provider+' '+require('../src/backend.cjs').llmBase(s);}has(s){return this.entries.has(this.scope(s));}get(s){return this.entries.get(this.scope(s))||'';}set(s,key){this.entries.set(this.scope(s),key);}delete(s){this.entries.delete(this.scope(s));}}}:p==='./tts.cjs'?(tts||require('../src/tts.cjs')):p==='./vrma-files.cjs'?(motionFiles||require('../src/vrma-files.cjs')):p==='./backend.cjs'?{Store,cleanSettings,isCloud:require('../src/backend.cjs').isCloud,llmBase:require('../src/backend.cjs').llmBase,chat:llm?.chat|| (async(_s,_h,t)=>'返事：'+t),listModels:llm?.listModels||(async()=>[]),touchReply:touchGenerate}:p==='./farewell.cjs'?{farewell:()=>'またね〜。またお話ししようね。'}:p==='./voice-bindings.cjs'?require('../src/voice-bindings.cjs'):p==='./relationship.cjs'?require('../src/relationship.cjs'):p==='./layout.cjs'?layout:p==='./interaction.cjs'?require('../src/interaction.cjs'):p==='./touch-response.cjs'?{TouchResponder:class extends require('../src/touch-response.cjs').TouchResponder{constructor(options){super({...options,setTimer:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimer:()=>{}});}}}:require(p),__dirname:path.resolve(__dirname,'../src'),setInterval:(fn,ms)=>{const t={fn,ms,unref(){}};intervals.push(t);return t;},clearInterval:t=>{if(t)t.cleared=true;},structuredClone,AbortController,console,setTimeout:(fn,ms)=>{const t={fn,ms,unref(){}};timers.push(t);return t;},clearTimeout:t=>{if(t)t.cleared=true;}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8'),context);await new Promise(r=>setImmediate(r));
  const invoke=(channel,...args)=>handlers.get(channel)({sender:windows[0].webContents},...args);
  const as=(i,channel,...args)=>handlers.get(channel)({sender:windows[i].webContents},...args);
@@ -262,4 +262,40 @@ test('expression catalog and preview enforce sender, current model, name and wei
  assert.equal(windows[1].events.at(-1).expressionPreview.name,'赤面');
  assert.equal((await invoke('expression-preview','face.vrm','',0)).ok,true);
  assert.equal((await as(1,'expression-ready','face.vrm',[12])).ok,false);
+});
+
+test('quit says goodbye before closing, restores a hidden mascot and ignores duplicate exits',async()=>{
+ const b=await boot();await b.invoke('action','hide');assert.equal(b.windows[1].visible,false);
+ assert.equal((await b.invoke('action','quit')).ok,true);assert.equal(b.app.quitCalls||0,0);
+ assert.equal(b.windows[1].visible,true);assert.equal(b.windows[3].visible,true);assert.match(b.windows[3].events.findLast(e=>e.speech)?.speech,/またね/);
+ const exit=b.timers.findLast(t=>t.ms===2000&&!t.cleared);assert.ok(exit);
+ await b.invoke('action','quit');assert.equal(b.timers.filter(t=>t.ms===2000&&!t.cleared).length,1);
+ assert.equal((await b.invoke('chat','まだいる？')).ok,false);assert.equal((await b.invoke('save',DEFAULTS)).ok,false);
+ exit.fn();assert.equal(b.app.quitCalls,1);b.app.emit('before-quit');assert.ok(b.saved());
+});
+test('tray exit uses the same farewell and late replies cannot replace it',async()=>{
+ let reject,signal;const b=await boot({},undefined,null,null,{chat:(_s,_h,_t,s)=>{signal=s;return new Promise((_r,j)=>reject=j);}});
+ const pending=b.invoke('chat','こんにちは');await new Promise(r=>setImmediate(r));
+ await b.invoke('action','menu');b.menus.at(-1).items.find(i=>i.label==='終了').click();assert.equal(signal.aborted,true);
+ reject(new Error('生成を停止しました。'));await pending;
+ assert.match(b.windows[3].events.findLast(e=>e.speech)?.speech,/またね/);assert.equal(b.app.quitCalls||0,0);
+});
+test('voiced farewell waits for playback end and ignores stale audio notifications',async()=>{
+ const mod=require('../src/tts.cjs'),tts={checkEmbedding:async p=>p,VoiceLane:class extends mod.VoiceLane{constructor(options){super({...options,generate:async()=>new Uint8Array([1])});}}};
+ const b=await boot({ttsEnabled:true,speakerPath:'/voice.speaker.safetensors'},undefined,null,tts);
+ await b.invoke('action','quit');await new Promise(r=>setImmediate(r));
+ const id=b.windows[1].events.findLast(e=>e.voiceAudio).voiceAudio.id;
+ assert.ok(b.timers.some(t=>t.ms===15000&&!t.cleared));assert.equal(b.app.quitCalls||0,0);
+ await b.as(1,'voice-state',id,'start');assert.ok(b.timers.some(t=>t.ms===30000&&!t.cleared));
+ await b.as(1,'voice-state',id-1,'ended');assert.ok(!b.timers.some(t=>t.ms===700&&!t.cleared));
+ await b.as(1,'voice-state',id,'ended');const end=b.timers.findLast(t=>t.ms===700&&!t.cleared);assert.ok(end);assert.equal(b.app.quitCalls||0,0);end.fn();assert.equal(b.app.quitCalls,1);
+});
+test('failed or stalled farewell audio exits without waiting forever and stop can shorten it',async()=>{
+ const mod=require('../src/tts.cjs');
+ for(const kind of ['failure','stalled','stop']){
+  const tts={checkEmbedding:async p=>p,VoiceLane:class extends mod.VoiceLane{constructor(options){super({...options,generate:async()=>{if(kind==='failure')throw new Error('server down');return new Promise(()=>{});}});}}};
+  const b=await boot({ttsEnabled:true,speakerPath:'/voice.speaker.safetensors'},undefined,null,tts);
+  await b.invoke('action','quit');await new Promise(r=>setImmediate(r));if(kind==='stop')await b.invoke('action','stop-voice');
+  const ms=kind==='failure'?2000:kind==='stalled'?15000:700,end=b.timers.findLast(t=>t.ms===ms&&!t.cleared);assert.ok(end);end.fn();assert.equal(b.app.quitCalls,1);
+ }
 });
