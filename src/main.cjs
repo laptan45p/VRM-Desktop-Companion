@@ -6,6 +6,7 @@ const {ApiKeys}=require('./api-keys.cjs');
 const {VoiceLane,checkEmbedding}=require('./tts.cjs');
 const {ReactionCounter}=require('./interaction.cjs');
 const reactions=new ReactionCounter();
+let expressionNames=[];
 const {TouchResponder}=require('./touch-response.cjs');
 const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,screen,safeStorage}=require('electron');
 const fs=require('node:fs/promises'),path=require('node:path');
@@ -122,7 +123,7 @@ async function selectVRM(){
  cancelVoice();touchResponses.cancel();reactions.reset();
  const previous=structuredClone(store.data);
  store.data.history=relationship.forModel(store.data.relationships,file,path.basename(file,path.extname(file)),store.data.history);store.data.settings.modelPath=file;store.data.settings.speakerPath=voices.lookup(store.data,file);
- try{store.save();}catch(e){store.data=previous;throw e;}mascot.show();broadcast({reloadVRM:true});return file;
+ try{store.save();}catch(e){store.data=previous;throw e;}expressionNames=[];mascot.show();broadcast({reloadVRM:true,expressionNames});return file;
 }
 if(gotLock)app.whenReady().then(async()=>{
  app.setAppUserModelId('local.vrm.desktop.companion');store=new Store(app.getPath('userData'));keys=new ApiKeys(app.getPath('userData'),safeStorage);
@@ -199,6 +200,17 @@ handle('choose-motions',async()=>{
  try{store.save();}catch(e){store.data.settings=previous;throw e;}broadcast({reloadMotions:true});return names;
 },()=>control);
 handle('motion-list',()=>motionFiles.catalog(store.data.settings.motionFolder));
+handle('expression-catalog',()=>({modelPath:store.data.settings.modelPath,names:expressionNames}),()=>control);
+handle('expression-ready',(modelPath,names)=>{
+ if(modelPath!==store.data.settings.modelPath)return;
+ if(!Array.isArray(names)||names.length>5000||names.some(n=>typeof n!=='string'||!n||n.length>256))throw new Error('表情一覧が不正です。');
+ expressionNames=[...new Set(names)];broadcast({expressionNames});
+},()=>mascot);
+handle('expression-preview',(modelPath,name,weight)=>{
+ if(modelPath!==store.data.settings.modelPath)throw new Error('VRMが切り替わりました。表情一覧を更新してください。');
+ if(typeof name!=='string'||name&&!expressionNames.includes(name)||!Number.isFinite(weight)||weight<0||weight>1)throw new Error('表情名または強度が不正です。');
+ mascot.webContents.send('update',{expressionPreview:{name,weight}});
+},()=>control);
 handle('motion-data',name=>motionFiles.readMotion(store.data.settings.motionFolder,name),()=>mascot);
 handle('key-status',s=>{s=cleanSettings(s);return {saved:isCloud(s.provider)&&keys.has(s),available:keys.available()};},()=>control);
 handle('key-save',(s,key)=>{if(active)throw new Error('生成を停止してからAPIキーを変更してください。');s=cleanSettings(s);touchResponses.cancel();keys.set(s,key);return {saved:true};},()=>control);

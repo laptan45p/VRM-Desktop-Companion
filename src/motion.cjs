@@ -51,13 +51,13 @@
  class ReactionMotion{
   constructor(){this.start=-Infinity;this.emotion=null;this.keys=new Set();}
   trigger(emotion,now){if(['shy','surprised','angry'].includes(emotion)){this.emotion=emotion;this.start=now;}}
-  update(vrm,now){
+  update(vrm,now,{expressions=true}={}){
    const manager=vrm?.expressionManager;
    for(const k of this.keys)manager?.setValue(k,0);this.keys.clear();
    const t=now-this.start,duration=this.emotion==='surprised'?2.2:3.5;
    if(t<0||t>=duration)return;
    const a=Math.min(1,t/.15,(duration-t)/.65),rot=(key,x=0,y=0,z=0)=>{const b=vrm.humanoid?.getNormalizedBoneNode(key);if(b){b.rotation.x+=x*a;b.rotation.y+=y*a;b.rotation.z+=z*a;}};
-   const face=(names,value)=>{const k=names.find(k=>manager?.getExpression(k));if(k){manager.setValue(k,value*a);this.keys.add(k);}};
+   const face=(names,value)=>{if(!expressions)return;const k=names.find(k=>manager?.getExpression(k));if(k){manager.setValue(k,value*a);this.keys.add(k);}};
    if(this.emotion==='shy'){
     face(['blush','shy','embarrassed','happy'],.6);rot('head',.12,-.09,.09);rot('chest',.025,.04);rot('leftUpperArm',.04,0,.08);rot('rightUpperArm',.04,0,-.08);
    }else if(this.emotion==='surprised'){
