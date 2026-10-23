@@ -75,9 +75,11 @@ $env:IRODORI_CHECKPOINT = "F:\models\Irodori-TTS-v4-Large\model.safetensors"
 
 VRMを切り替えると、登録したSpeaker Embeddingへ自動で切り替わります。初めてのVRMでは未選択になり、文字だけで応答するので、そのモデルの声を登録してください。同じEmbeddingを複数のVRMへ指定することもできます。切り替え前の音声の生成待ち・再生は停止します。
 
-Speaker Studioのプロジェクト内にある作成済みファイルも、その場所から直接選べます。ファイル本体ではなく、選択したパスをサーバーへ渡します。別の場所へ移動したら選び直してください。
+Speaker Studioのプロジェクト内にある作成済みファイルも、その場所から直接選べます。同じPCへの接続では、ファイル本体ではなく選択したパスをサーバーへ渡します。別の場所へ移動したら選び直してください。
 
-LAN接続では `192.168.x.x`・`10.x.x.x`・`172.16.x.x〜172.31.x.x` を指定できます。サーバー側もLANから接続できるアドレスで待ち受けている必要があります。同梱の起動batはこのPC向けの待ち受けです。別PCを使う場合は、選んだSpeaker Embeddingが両方のPCから同じパスで読める構成が必要です。Embeddingの自動アップロードやサーバー専用パスの指定、APIキー認証には対応していません。
+LAN接続では `192.168.x.x`・`10.x.x.x`・`172.16.x.x〜172.31.x.x` を指定できます。サーバー側もLANから接続できるアドレスで待ち受けている必要があります。同梱の起動batはこのPC向けの待ち受けです。LAN接続では、選んだSpeaker Embeddingと**同名のファイル**をTTS側のvoicesフォルダー（既定：`server\voices`。`IRODORI_VOICES_DIR`を設定している場合はそのフォルダー）へ置いてください。クライアント側では引き続き元のファイルを選びます。ファイル名から `.speaker.safetensors` を除いたVoice IDを送り、TTSサーバー自身がEmbeddingのパスを解決します。**両方のPCのドライブレターや親フォルダーをそろえる必要はありません。** v0.1.49 LAN-TTS修正版で既に同名ファイルを置いた場合は、そのまま利用できます。
+
+例えばCompanion側が `F:\client-voices\声.speaker.safetensors`、TTS側が `D:\server\voices\声.speaker.safetensors` でも利用できます。ファイル名だけでなく、同じ内容のEmbeddingを置いてください。Embeddingの自動アップロードやAPIキー認証には対応していません。
 
 ## 発言と口パク
 

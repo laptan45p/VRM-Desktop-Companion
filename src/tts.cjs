@@ -1,5 +1,6 @@
 'use strict';
 const fs=require('node:fs/promises');
+const path=require('node:path');
 const {isIP}=require('node:net');
 function ttsBase(endpoint){
  let u;try{u=new URL(endpoint);}catch{throw new Error('TTSの接続先URLを確認してください。');}
@@ -15,8 +16,11 @@ async function checkEmbedding(file){
 }
 async function synthesize(settings,text,signal){
  const base=ttsBase(settings.ttsEndpoint);await checkEmbedding(settings.speakerPath);
- const response=await fetch(base+'/v1/audio/speech',{method:'POST',redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(Math.round(settings.ttsTimeout*1000))]),headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'irodori-tts',input:text,voice:'none',response_format:'wav',speed:settings.ttsSpeed,irodori:{ref_embed:settings.speakerPath,caption:settings.ttsCaption||undefined,chunking_enabled:true}})});
- if(!response.ok){const message=(await response.text()).slice(0,600);throw new Error(`Irodori-TTS HTTP ${response.status}: ${message}`);}
+ const local=['localhost','127.0.0.1','[::1]'].includes(new URL(base).hostname);
+ // On LAN the server resolves its own voices directory. Never send a client drive path.
+ const voice=local?'none':path.win32.basename(settings.speakerPath).replace(/\.speaker\.safetensors$/i,'');
+ const response=await fetch(base+'/v1/audio/speech',{method:'POST',redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(Math.round(settings.ttsTimeout*1000))]),headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'irodori-tts',input:text,voice,response_format:'wav',speed:settings.ttsSpeed,irodori:{...(local?{ref_embed:settings.speakerPath}:{}),caption:settings.ttsCaption||undefined,chunking_enabled:true}})});
+ if(!response.ok){const message=(await response.text()).slice(0,600);throw new Error(`Irodori-TTS HTTP ${response.status}: ${message}${!local&&response.status===400?'\nLAN接続では、選択したEmbeddingと同名の .speaker.safetensors をTTSサーバー側のvoicesフォルダー（既定：server\\voices）へ置いてください。ドライブや親フォルダーをそろえる必要はありません。':''}`);}
  const reader=response.body.getReader(),chunks=[];let length=0;
  try{for(;;){const {value,done}=await reader.read();if(done)break;length+=value.length;if(length>32*1024*1024)throw new Error('音声が32MBを超えています。発言を短くしてください。');chunks.push(value);}}finally{await reader.cancel().catch(()=>{});}
  const bytes=Buffer.concat(chunks,length);if(bytes.length<44||bytes.toString('ascii',0,4)!=='RIFF'||bytes.toString('ascii',8,12)!=='WAVE')throw new Error('Irodori-TTSからWAV音声が返りませんでした。');return new Uint8Array(bytes);

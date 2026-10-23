@@ -16,7 +16,23 @@ test('saved LAN URL reaches the TTS request and voice lane publishes its WAV',as
  t.mock.method(globalThis,'fetch',async(url,options)=>{requests.push({url,options});return new Response(require('./audio-fixture.cjs')(),{headers:{'Content-Type':'audio/wav'}});});
  const lane=new VoiceLane({publish:p=>published.push(p),fail:(...args)=>failed.push(args)});
  await lane.request(lane.cancel(),{...DEFAULTS,ttsEndpoint:endpoint,speakerPath},'音声の確認です。');
- assert.equal(requests.length,1);assert.equal(requests[0].url,'http://192.168.1.101:8088/v1/audio/speech');assert.equal(requests[0].options.redirect,'error');const body=JSON.parse(requests[0].options.body);assert.equal(body.input,'音声の確認です。');assert.equal(body.irodori.ref_embed,speakerPath);assert.equal(failed.length,0);assert.equal(published.length,1);assert.equal(Buffer.from(published[0].data).toString('ascii',8,12),'WAVE');
+ assert.equal(requests.length,1);assert.equal(requests[0].url,'http://192.168.1.101:8088/v1/audio/speech');assert.equal(requests[0].options.redirect,'error');const body=JSON.parse(requests[0].options.body);assert.equal(body.input,'音声の確認です。');assert.equal(body.voice,'voice');assert.equal('ref_embed' in body.irodori,false);assert.equal(JSON.stringify(body).includes(speakerPath),false);assert.equal(failed.length,0);assert.equal(published.length,1);assert.equal(Buffer.from(published[0].data).toString('ascii',8,12),'WAVE');
+}));
+test('LAN speech resolves Japanese Windows embedding names from a different server drive',async t=>{
+ const speakerPath='F:\\client-voices\\日本語（テスト）\\テスト音声 話者A_0003000.speaker.safetensors',voiceId='テスト音声 話者A_0003000';
+ // Model the server registry scanning D:\\server\\voices, without access to the client F: path.
+ const registry=new Map([[voiceId,{ref_embed:'D:\\server\\voices\\'+voiceId+'.speaker.safetensors'}]]),requests=[];
+ t.mock.method(fs,'stat',async file=>{assert.equal(file,speakerPath);return {isFile:()=>true,size:100};});
+ t.mock.method(globalThis,'fetch',async(_url,options)=>{const body=JSON.parse(options.body);requests.push(body);if(body.irodori.ref_embed||!registry.has(body.voice))return new Response('No such file or directory',{status:400});return new Response(require('./audio-fixture.cjs')());});
+ for(const ttsEndpoint of ['http://192.168.1.101:8088/','http://10.1.2.3:8088/v1','http://172.16.1.2:8088']){
+  const audio=await synthesize({...DEFAULTS,ttsEndpoint,speakerPath},'こんにちは',new AbortController().signal);assert.equal(Buffer.from(audio).toString('ascii',8,12),'WAVE');
+ }
+ for(const body of requests){assert.equal(body.voice,voiceId);assert.equal('ref_embed' in body.irodori,false);assert.equal(body.irodori.chunking_enabled,true);}
+});
+test('LAN missing voice reports the server voices folder and keeps text on failure',async t=>fixture(async speakerPath=>{
+ const published=[],failed=[];t.mock.method(globalThis,'fetch',async()=>new Response('Unknown voice',{status:400}));
+ const lane=new VoiceLane({publish:p=>published.push(p),fail:(...args)=>failed.push(args)});await lane.request(lane.cancel(),{...DEFAULTS,ttsEndpoint:'http://192.168.1.101:8088',speakerPath},'残す発言');
+ assert.equal(published.length,0);assert.equal(failed.length,1);assert.match(failed[0][1],/HTTP 400/);assert.match(failed[0][1],/server\\voices/);assert.match(failed[0][1],/そろえる必要はありません/);
 }));
 test('TTS errors preserve text and reject public endpoints, invalid speaker or invalid audio',async()=>fixture(async speakerPath=>{
  await assert.rejects(checkEmbedding('/missing/voice.speaker.safetensors'));await assert.rejects(checkEmbedding(speakerPath+'.exe'));
