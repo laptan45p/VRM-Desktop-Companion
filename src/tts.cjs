@@ -1,12 +1,20 @@
 'use strict';
 const fs=require('node:fs/promises');
-const {localBase}=require('./backend.cjs');
+const {isIP}=require('node:net');
+function ttsBase(endpoint){
+ let u;try{u=new URL(endpoint);}catch{throw new Error('TTSの接続先URLを確認してください。');}
+ const host=u.hostname,parts=host.split('.').map(Number);
+ const lan=isIP(host)===4&&(parts[0]===10||parts[0]===172&&parts[1]>=16&&parts[1]<=31||parts[0]===192&&parts[1]===168);
+ if(u.protocol!=='http:'||!(['localhost','127.0.0.1','[::1]'].includes(host)||lan)||u.username||u.password||u.search||u.hash)throw new Error('TTSの接続先は http://127.0.0.1:ポート番号 またはLAN内のIPv4アドレス（例：http://192.168.1.101:8088）を指定してください。');
+ if(!['/','','/v1','/v1/'].includes(u.pathname))throw new Error('TTSの接続先にはAPIのルートURLを指定してください（例：http://192.168.1.101:8088）。');
+ return u.origin;
+}
 async function checkEmbedding(file){
  if(typeof file!=='string'||!file.toLowerCase().endsWith('.speaker.safetensors'))throw new Error('Speaker Embedding（.speaker.safetensors）を選んでください。');
  const stat=await fs.stat(file).catch(()=>null);if(!stat?.isFile()||stat.size>32*1024*1024)throw new Error('Speaker Embeddingが見つからないか、32MBを超えています。');return file;
 }
 async function synthesize(settings,text,signal){
- const base=localBase(settings.ttsEndpoint);await checkEmbedding(settings.speakerPath);
+ const base=ttsBase(settings.ttsEndpoint);await checkEmbedding(settings.speakerPath);
  const response=await fetch(base+'/v1/audio/speech',{method:'POST',redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(Math.round(settings.ttsTimeout*1000))]),headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'irodori-tts',input:text,voice:'none',response_format:'wav',speed:settings.ttsSpeed,irodori:{ref_embed:settings.speakerPath,caption:settings.ttsCaption||undefined,chunking_enabled:true}})});
  if(!response.ok){const message=(await response.text()).slice(0,600);throw new Error(`Irodori-TTS HTTP ${response.status}: ${message}`);}
  const reader=response.body.getReader(),chunks=[];let length=0;
@@ -23,4 +31,5 @@ class VoiceLane{
   finally{if(this.controller===controller)this.controller=null;}
  }
 }
-module.exports={synthesize,checkEmbedding,VoiceLane};
+module.exports={ttsBase,synthesize,checkEmbedding,VoiceLane};
+

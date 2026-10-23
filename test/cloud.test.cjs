@@ -3,7 +3,7 @@ const {DEFAULTS,cleanSettings,llmBase,localBase,chat,touchReply,listModels}=requ
 async function fakeFetch(fn,run){const old=global.fetch;global.fetch=fn;try{await run();}finally{global.fetch=old;}}
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json'}});
 const openai={...DEFAULTS,provider:'openai',endpoint:'https://api.openai.com/v1',model:'test-chat-model'};
-test('cloud base URLs enforce HTTPS, official host and exact endpoint key scope; TTS stays loopback',()=>{
+test('cloud base URLs enforce HTTPS, official host and exact endpoint key scope; local LLM stays loopback',()=>{
  assert.equal(cleanSettings({provider:'openai'}).model,'gpt-6-luna');assert.equal(cleanSettings({...openai,model:'chosen-model'}).model,'chosen-model');assert.equal(cleanSettings({provider:'ollama'}).model,''); assert.equal(llmBase({...openai,endpoint:'https://api.openai.com/'}),'https://api.openai.com/v1');assert.equal(llmBase({...openai,provider:'compatible',endpoint:'https://provider.example/api/v1/'}),'https://provider.example/api/v1');
  for(const endpoint of ['http://api.openai.com/v1','https://other.example/v1','https://x:y@api.openai.com/v1','https://api.openai.com/v1?key=x'])assert.throws(()=>llmBase({...openai,endpoint}));
  for(const endpoint of ['http://provider.example/v1','https://provider.example/v1#key','https://provider.example/v1/chat/completions'])assert.throws(()=>llmBase({...openai,provider:'compatible',endpoint}));
@@ -65,3 +65,4 @@ test('OpenRouter credit/provider errors preserve readable messages, redact keys,
   assert.equal(count,1);
  });}
 });
+
