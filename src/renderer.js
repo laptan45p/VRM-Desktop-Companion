@@ -64,12 +64,20 @@ async function refreshMemory(force=false){
  const request=++memoryRequest,data=await call(api.memoryView());if(request!==memoryRequest)return;
  const changed=!memoryData||memoryData.profileId!==data.profileId,selected=$('memoryList').value;memoryData=data;
  $('memoryInfo').textContent='対象：'+(state.relationship?.label||state.settings.name)+' ／ 長期メモ '+data.items.length+'件';
+ renderMemoryAvailability();
  $('memoryList').replaceChildren();for(const item of data.items)$('memoryList').add(new Option('['+memoryKinds[item.kind]+'] '+item.text.replace(/\s+/g,' ').slice(0,70),item.id));
  $('memoryList').value=selected;
  if(changed||force||!summaryEditing){$('memorySummary').value=data.summary;summaryEditing=false;}
  if(changed||force||!memoryEditing)selectMemory(changed?'':selected);
 }
+function renderMemoryAvailability(){
+ const data=memoryData;if(!data)return;const stats=data.stats||{historyTurns:state.history.length/2,shortTermTurns:Math.min(state.history.length/2,state.settings.historyTurns),pendingTurns:0,pendingSummaryTurns:0};
+ const auto=!state.settings.memoryEnabled?'記憶の利用は無効（直近履歴は参照）':state.settings.memoryAuto?'自動整理は有効':'自動整理は無効（手動整理できます）';
+ const summary=data.summary?'要約あり':stats.pendingSummaryTurns?'要約待ちの会話があります':'要約はまだありません。直近の会話は履歴から参照します';
+ $('memoryAvailability').textContent='対象：'+(state.relationship?.label||state.settings.name)+'\n保存した会話：'+stats.historyTurns+'往復／今回参照する直近履歴：'+stats.shortTermTurns+'往復。'+summary+'。\n長期メモ：'+data.items.length+'件。'+(data.organizedAt?'最終整理：'+new Date(data.organizedAt).toLocaleString('ja-JP')+'。':'整理完了の日時は未記録です。')+'未整理：'+stats.pendingTurns+'往復。'+auto+'。\n長期メモは情報・好みなどがある場合だけ作成します。空でも会話履歴があれば、その範囲は参照します。';
+}
 function updateMemoryBusy(){
+ renderMemoryAvailability();
  const organizing=state.memoryStatus==='記憶を整理しています…';
  for(const id of ['organizeMemory','saveMemory','deleteMemory','saveMemorySummary','clearMemory'])$(id).disabled=busy||organizing;
  $('cancelMemory').disabled=!organizing;
@@ -95,13 +103,16 @@ function renderHistory(id='history',follow=false){
 }
 function renderRelationship(){
  const r=state.relationship;if(!r)return;
- const el=$('relationshipProfile');el.replaceChildren();for(const p of r.profiles)el.add(new Option(p.label,p.id));el.value=r.active;
+ const label=p=>p.label+'（履歴 '+(p.turns||0)+'往復・メモ '+(p.notes||0)+'件／'+p.id.slice(0,6)+'）';
+ const el=$('relationshipProfile');el.replaceChildren();for(const p of r.profiles)el.add(new Option(label(p),p.id));el.value=r.active;
+ const source=$('relationshipSource'),selected=source.value;source.replaceChildren();source.add(new Option('整理するプロフィールを選択',''));for(const p of r.profiles)if(p.id!==r.active)source.add(new Option(label(p),p.id));source.value=r.profiles.some(p=>p.id===selected&&p.id!==r.active)?selected:'';
+ const archived=$('relationshipArchived'),restore=archived.value;archived.replaceChildren();archived.add(new Option('非表示のプロフィールを選択',''));for(const p of r.archived||[])archived.add(new Option(label(p),p.id));archived.value=(r.archived||[]).some(p=>p.id===restore)?restore:'';
  $('romanceEnabled').checked=r.romanceEnabled;
  const moods={calm:'落ち着いている',happy:'嬉しい',shy:'照れている',surprised:'驚いている',angry:'怒っている'};
  $('relationshipSummary').textContent=`${r.label}：${r.stage}（好感度 ${r.affinity}）・${r.status} ／ 今の気分：${moods[r.mood]||r.mood}`;
  $('confess').disabled=busy||!r.romanceEnabled;
 }
-function updateBusy(value){busy=value;renderLlamaState();updateMemoryBusy();$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear'])$(id).disabled=busy;$('fetchModels').disabled=busy||fetchingModels;$('saveKey').disabled=busy||!keyAvailable;$('deleteKey').disabled=busy||!keySaved;for(const id of ['relationshipProfile','relationshipName','createRelationship','romanceEnabled'])$(id).disabled=busy;$('confess').disabled=busy||!state.relationship?.romanceEnabled;}
+function updateBusy(value){busy=value;renderLlamaState();updateMemoryBusy();$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear'])$(id).disabled=busy;$('fetchModels').disabled=busy||fetchingModels;$('saveKey').disabled=busy||!keyAvailable;$('deleteKey').disabled=busy||!keySaved;for(const id of ['relationshipProfile','relationshipName','createRelationship','renameRelationship','relationshipSource','mergeRelationship','archiveRelationship','relationshipArchived','restoreRelationship','romanceEnabled'])$(id).disabled=busy;$('confess').disabled=busy||!state.relationship?.romanceEnabled;}
 async function initControl(){
  await refreshMemory();
  $('memoryList').onchange=()=>selectMemory($('memoryList').value);$('newMemory').onclick=()=>selectMemory();
@@ -130,12 +141,17 @@ async function initControl(){
  const relationAction=async(operation,value)=>{if(dirty)throw new Error('変更した設定を先に保存してください。');state.relationship=await call(api.relationship(operation,value));renderRelationship();status('relationshipStatus','関係の設定を保存しました。');};
  $('relationshipProfile').onchange=wrap(async()=>{try{await relationAction('select',$('relationshipProfile').value);}finally{renderRelationship();}},'relationshipStatus');
  $('createRelationship').onclick=wrap(async()=>{await relationAction('create',$('relationshipName').value);$('relationshipName').value='';},'relationshipStatus');
+ $('renameRelationship').onclick=wrap(async()=>{await relationAction('rename',$('relationshipName').value);$('relationshipName').value='';},'relationshipStatus');
+ const selectedSource=()=>{const p=state.relationship.profiles.find(p=>p.id===$('relationshipSource').value&&p.id!==state.relationship.active);if(!p)throw new Error('整理するプロフィールを選んでください。');return p;};
+ $('mergeRelationship').onclick=wrap(async()=>{const p=selectedSource(),r=state.relationship;if(!confirm('「'+p.label+'」の会話・記憶を「'+r.label+'」へ統合しますか？\n統合先の好感度・恋人状態を維持します。元データは非表示にして残し、復元できます。'))return;await relationAction('merge',{sourceId:p.id,targetId:r.active});},'relationshipStatus');
+ $('archiveRelationship').onclick=wrap(async()=>{const p=selectedSource();if(confirm('「'+p.label+'」を一覧から非表示にしますか？会話・記憶・関係は残り、復元できます。'))await relationAction('archive',p.id);},'relationshipStatus');
+ $('restoreRelationship').onclick=wrap(async()=>{const id=$('relationshipArchived').value;if(!id)throw new Error('復元するプロフィールを選んでください。');await relationAction('restore',id);},'relationshipStatus');
  $('romanceEnabled').onchange=wrap(async()=>{try{await relationAction('romance',$('romanceEnabled').checked);}finally{renderRelationship();}},'relationshipStatus');
  $('confess').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');await call(api.confess());status('relationshipStatus','気持ちを伝えました。返事は吹き出しと会話履歴に表示します。');},'relationshipStatus');
  fillSettings(state.settings);status('voiceStatus',state.voiceStatus||'');$('chooseSpeaker').onclick=wrap(async()=>{const path=await call(api.chooseSpeaker());if(path)$('speakerPath').textContent=path;},'voiceStatus');$('testVoice').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');await call(api.action('test-voice'));},'voiceStatus');$('stopVoice').onclick=()=>api.action('stop-voice');refreshMotionOptions();$('chooseMotions').onclick=wrap(async()=>{const names=await call(api.chooseMotions());if(names){await refreshMotionOptions();$('motionPath').textContent=state.settings.motionFolder;status('motionStatus',names.length+'件のモーションを登録しました。');}},'motionStatus');$('dataPath').textContent='設定と履歴：'+state.dataPath;
  const tabs=selectControlTab;
  $('chatTab').onclick=()=>tabs('chat');$('settingsTab').onclick=()=>tabs('settings');
- $('settingsForm').oninput=e=>{if(['relationshipProfile','relationshipName','romanceEnabled','expressionName','expressionWeight','memoryList','memoryText','memoryKind','memorySummary'].includes(e?.target?.id))return;dirty=true;};
+ $('settingsForm').oninput=e=>{if(['relationshipProfile','relationshipName','relationshipSource','relationshipArchived','romanceEnabled','expressionName','expressionWeight','memoryList','memoryText','memoryKind','memorySummary'].includes(e?.target?.id))return;dirty=true;};
  $('provider').onchange=()=>{invalidateModels();$('endpoint').value={ollama:'http://127.0.0.1:11434',lmstudio:'http://127.0.0.1:1234',llamacpp:'http://127.0.0.1:'+Number($('llamaPort').value),openai:'https://api.openai.com/v1',openrouter:'https://openrouter.ai/api/v1',compatible:''}[$('provider').value];$('apiKey').value='';setModels([],$('provider').value==='openai'?'gpt-6-luna':'');dirty=true;updateProviderUI();};
  $('endpoint').oninput=()=>{invalidateModels();dirty=true;$('apiKey').value='';refreshKeyStatus();};
  $('saveKey').onclick=wrap(async()=>{const key=$('apiKey').value;$('apiKey').value='';await call(api.saveKey(settingsFromForm(),key));await refreshKeyStatus();},'keyStatus');
@@ -151,7 +167,7 @@ async function initControl(){
   finally{if(request===modelRequest){fetchingModels=false;$('fetchModels').disabled=busy;$('fetchModels').textContent=modelListButtonText();}}
  };
  $('settingsForm').onsubmit=async e=>{e.preventDefault();await wrap(async()=>{const s=await call(api.save(settingsFromForm()));state.settings=s;dirty=false;updateProviderUI();status('connectionStatus','設定を保存しました。');},'connectionStatus')();};
- $('loadVRM').onclick=wrap(async()=>{const p=await call(api.chooseVRM());if(p)status('chatStatus','VRMを読み込み中です。結果は吹き出しに表示します。');});
+ $('loadVRM').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');const p=await call(api.chooseVRM());if(p)status('chatStatus','VRMを読み込み中です。結果は吹き出しに表示します。');});
  $('chatForm').onsubmit=async e=>{e.preventDefault();if(busy)return;await wrap(async()=>{
   if(dirty)throw new Error('変更した設定を先に保存してください。');
   const text=$('message').value.trim();if(!text)return;
@@ -478,7 +494,7 @@ api.onUpdate(data=>{
   if(data.speech!==undefined||data.settings)updateSpeech(data.speech);
  }else{
   if(data.memoryStatus!==undefined)state.memoryStatus=data.memoryStatus;
-  if(data.memoryChanged||data.relationship&&beforeRelation!==state.relationship?.active)refreshMemory().catch(e=>status('memoryStatus',e.message,true));
+  if(data.memoryChanged||data.reply||data.relationship&&beforeRelation!==state.relationship?.active)refreshMemory().catch(e=>status('memoryStatus',e.message,true));
   if(data.expressionNames)setExpressionOptions(data.expressionNames,state.settings.modelPath);
   if(data.voiceStatus!==undefined)status('voiceStatus',data.voiceStatus);
   if(data.settings){$('speakerPath').textContent=state.settings.speakerPath||'Speaker Embedding未選択';$('vrmPath').textContent=state.settings.modelPath||'VRM未選択：デモ表示';}

@@ -1,21 +1,23 @@
 'use strict';
 const {randomUUID}=require('node:crypto');
 const memory=require('./memory.cjs');
+const path=require('node:path');
 const DAY_CAP=12,CHAT_COOLDOWN=60000,STROKE_COOLDOWN=30000,CONFESS_COOLDOWN=86400000;
 const clamp=(v,min,max,fallback=0)=>typeof v==='number'&&Number.isFinite(v)?Math.min(max,Math.max(min,v)):fallback;
 const stamp=v=>clamp(v,0,Number.MAX_SAFE_INTEGER);
-function profile(id,label){return {id,label:String(label||'コンパニオン').slice(0,100),affinity:0,romance:0,lovers:false,romanceEnabled:true,mood:'calm',moodUntil:0,lastChat:0,lastStroke:0,lastPenalty:0,lastConfession:0,day:'',gained:0,romanceGained:0,history:[],memory:memory.clean()};}
+function profile(id,label){return {id,label:String(label||'コンパニオン').slice(0,100),archived:false,affinity:0,romance:0,lovers:false,romanceEnabled:true,mood:'calm',moodUntil:0,lastChat:0,lastStroke:0,lastPenalty:0,lastConfession:0,day:'',gained:0,romanceGained:0,history:[],memory:memory.clean()};}
 function history(items){const out=[];if(Array.isArray(items))for(let i=0;i+1<items.length;i+=2){const a=items[i],b=items[i+1];if(a?.role==='user'&&b?.role==='assistant'&&typeof a.content==='string'&&typeof b.content==='string')out.push({role:'user',content:a.content.slice(0,8000)},{role:'assistant',content:b.content.slice(0,12000)});}return out.slice(-200);}
 function clean(raw,label='コンパニオン'){
  const profiles=[];if(Array.isArray(raw?.profiles))for(const p of raw.profiles.slice(0,100)){
   if(!p||typeof p.id!=='string'||!p.id||p.id.length>100||profiles.some(x=>x.id===p.id))continue;
-  const next=profile(p.id,p.label);next.memory=memory.clean(p.memory);next.affinity=clamp(p.affinity,-100,100);next.romance=clamp(p.romance,0,100);next.lovers=p.lovers===true;next.romanceEnabled=p.romanceEnabled!==false;
+  const next=profile(p.id,p.label);next.archived=p.archived===true;next.memory=memory.clean(p.memory);next.affinity=clamp(p.affinity,-100,100);next.romance=clamp(p.romance,0,100);next.lovers=p.lovers===true;next.romanceEnabled=p.romanceEnabled!==false;
   next.mood=['calm','happy','shy','surprised','angry'].includes(p.mood)?p.mood:'calm';
   for(const key of ['moodUntil','lastChat','lastStroke','lastPenalty','lastConfession'])next[key]=stamp(p[key]);
   next.day=typeof p.day==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(p.day)?p.day:'';next.gained=clamp(p.gained,0,DAY_CAP);next.romanceGained=clamp(p.romanceGained,0,DAY_CAP);next.history=history(p.history);profiles.push(next);
  }
  if(!profiles.length)profiles.push(profile('default',label));
  const active=profiles.some(p=>p.id===raw?.active)?raw.active:profiles[0].id;
+ profiles.find(p=>p.id===active).archived=false;
  const bindings=[];if(Array.isArray(raw?.bindings))for(const b of raw.bindings.slice(0,500))if(typeof b?.path==='string'&&b.path.length<=4096&&profiles.some(p=>p.id===b.id)&&!bindings.some(x=>x.path===b.path))bindings.push({path:b.path,id:b.id});
  return {version:1,active,profiles,bindings};
 }
@@ -23,7 +25,7 @@ const current=data=>data.profiles.find(p=>p.id===data.active);
 function mood(p,now=Date.now()){return now<p.moodUntil?p.mood:'calm';}
 function stage(value){return value< -30?'警戒':value<20?'普通':value<50?'親しみ':value<80?'信頼':'とても親しい';}
 function view(data,now=Date.now()){
- const p=current(data);return {active:p.id,label:p.label,affinity:p.affinity,romance:p.romance,stage:stage(p.affinity),mood:mood(p,now),romanceEnabled:p.romanceEnabled,lovers:p.lovers,status:p.lovers?(p.romanceEnabled?'恋人':'恋愛休止'):p.romanceEnabled&&p.romance>=20?'恋を意識':'友人',profiles:data.profiles.map(x=>({id:x.id,label:x.label}))};
+ const p=current(data),brief=x=>({id:x.id,label:x.label,turns:history(x.history).length/2,notes:x.memory.items.length,hasSummary:!!x.memory.summary});return {active:p.id,label:p.label,affinity:p.affinity,romance:p.romance,stage:stage(p.affinity),mood:mood(p,now),romanceEnabled:p.romanceEnabled,lovers:p.lovers,status:p.lovers?(p.romanceEnabled?'恋人':'恋愛休止'):p.romanceEnabled&&p.romance>=20?'恋を意識':'友人',profiles:data.profiles.filter(x=>!x.archived).map(brief),archived:data.profiles.filter(x=>x.archived).map(brief)};
 }
 function daily(p,now){const d=new Date(now),key=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');if(key>p.day){p.day=key;p.gained=0;p.romanceGained=0;}}
 function gain(p,amount,romance,now){daily(p,now);const a=Math.min(amount,DAY_CAP-p.gained),r=p.romanceEnabled?Math.min(romance,DAY_CAP-p.romanceGained):0;p.affinity=Math.min(100,p.affinity+a);p.romance=Math.min(100,p.romance+r);p.gained+=a;p.romanceGained+=r;}
@@ -62,15 +64,28 @@ function context(p,event='',now=Date.now()){
 }
 function select(data,id,modelPath,activeHistory){
  if(!data.profiles.some(p=>p.id===id))throw new Error('キャラクターが見つかりません。');
- current(data).history=history(activeHistory);data.active=id;
- if(modelPath){data.bindings=data.bindings.filter(x=>x.path!==modelPath);data.bindings.push({path:modelPath,id});data.bindings=data.bindings.slice(-500);}
+ current(data).history=history(activeHistory);data.active=id;current(data).archived=false;
+ if(modelPath){data.bindings=data.bindings.filter(x=>modelKey(x.path)!==modelKey(modelPath));data.bindings.push({path:modelPath,id});data.bindings=data.bindings.slice(-500);}
  return structuredClone(current(data).history);
 }
 function create(data,label){if(data.profiles.length>=100)throw new Error('登録できるキャラクターは100件までです。');if(typeof label!=='string'||!label.trim()||label.length>100)throw new Error('キャラクター名は1〜100文字で入力してください。');const p=profile(randomUUID(),label.trim());data.profiles.push(p);return p.id;}
-function forModel(data,modelPath,label,activeHistory){
- let id=data.bindings.find(x=>x.path===modelPath)?.id;
- if(!id)id=data.bindings.length===0?data.active:create(data,label);
+function modelKey(value){return /^(?:[a-z]:[\\/]|\\\\)/i.test(value)?path.win32.normalize(value).toLowerCase():value;}
+function boundId(data,modelPath){return data.bindings.find(x=>modelKey(x.path)===modelKey(modelPath))?.id;}
+function forModel(data,modelPath,label,activeHistory,choice='current'){
+ let id=boundId(data,modelPath);
+ if(!id)id=choice==='new'?create(data,label):data.active;
  return select(data,id,modelPath,activeHistory);
+}
+function rename(data,id,label){if(typeof label!=='string'||!label.trim()||label.length>100)throw new Error('キャラクター名は1〜100文字で入力してください。');const p=data.profiles.find(p=>p.id===id);if(!p)throw new Error('キャラクターが見つかりません。');p.label=label.trim();}
+function archive(data,id,value=true){const p=data.profiles.find(p=>p.id===id);if(!p)throw new Error('キャラクターが見つかりません。');if(value&&id===data.active)throw new Error('使用中のキャラクターは非表示にできません。別のキャラクターを選んでください。');p.archived=!!value;}
+function merge(data,sourceId,targetId,activeHistory){
+ if(targetId!==data.active||sourceId===targetId)throw new Error('統合先のキャラクターを選び直してください。');
+ const source=data.profiles.find(p=>p.id===sourceId),target=current(data);if(!source||source.archived)throw new Error('統合元のキャラクターを選び直してください。');
+ const seen=new Set(),combined=[];
+ for(const p of memory.pairs([...history(source.history),...history(activeHistory)]))if(!seen.has(p.id)){seen.add(p.id);combined.push({role:'user',content:p.user},{role:'assistant',content:p.assistant});}
+ target.history=combined.slice(-200);target.memory=memory.merge(target.memory,source.memory);source.archived=true;
+ for(const binding of data.bindings)if(binding.id===sourceId)binding.id=targetId;
+ return structuredClone(target.history);
 }
 function greeting(p,now=Date.now()){
  if(mood(p,now)==='angry')return '今はちょっと落ち着かせてね。どうしたの？';
@@ -78,5 +93,5 @@ function greeting(p,now=Date.now()){
  return p.affinity>=50?'来てくれたんだ。どうしたの？':p.affinity>=20?'お話しする？どうしたの？':p.affinity< -30?'……何か用かな？':'どうしたの？';
 }
 function caption(p,now=Date.now()){return {shy:'少し照れた、やわらかな話し方',happy:'嬉しそうで親しみのある話し方',angry:'不快な気持ちを落ち着いて伝える話し方',surprised:'少し驚いた話し方'}[mood(p,now)]||'';}
-module.exports={clean,current,view,stage,mood,prepare,touch,context,select,create,forModel,caption,greeting,history,DAY_CAP};
+module.exports={clean,current,view,stage,mood,prepare,touch,context,select,create,forModel,boundId,rename,archive,merge,caption,greeting,history,DAY_CAP};
 

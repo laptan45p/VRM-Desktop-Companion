@@ -345,3 +345,17 @@ test('model selection previews automatic NemoMix format, preserves manual choice
  node('llamaModelPath').value='Qwen3-8B.gguf';node('llamaModelPath').oninput();assert.match(node('llamaTemplateInfo').textContent,/GGUFに保存/);assert.match(node('llamaTemplateHelp').textContent,/会話テンプレート/);assert.match(node('llamaStatus').textContent,/適用中：NemoMix/,'An unsaved draft must not change the running server description');
  node('llamaModelPath').value='NemoMix-Unleashed-12B-Q4_K_M.gguf';node('llamaTemplate').value='chatml';node('llamaTemplate').onchange();assert.match(node('llamaTemplateInfo').textContent,/手動指定：chatml/);
 });
+
+test('profile cleanup controls preserve selected IDs and distinguish duplicate names',async()=>{
+ const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');for(const id of ['renameRelationship','relationshipSource','mergeRelationship','archiveRelationship','relationshipArchived','restoreRelationship'])assert.ok(html.includes('id="'+id+'"'));
+ const {node,calls,notify}=await boot('control'),base=require('../src/relationship.cjs').view(require('../src/relationship.cjs').clean());
+ notify({relationship:{...base,profiles:[{id:'default',label:'同じ名前',turns:2,notes:1},{id:'source-123',label:'同じ名前',turns:4,notes:3}],archived:[{id:'hidden-123',label:'以前のプロフィール',turns:1,notes:1}]}});
+ assert.notEqual(node('relationshipProfile').children[0].text,node('relationshipProfile').children[1].text);node('relationshipSource').value='source-123';await node('mergeRelationship').onclick();const merge=calls.find(c=>c[0]==='relationship'&&c[1]==='merge');assert.equal(merge[2].sourceId,'source-123');assert.equal(merge[2].targetId,'default');
+ node('relationshipName').value='整理した名前';await node('renameRelationship').onclick();assert.ok(calls.some(c=>c[1]==='rename'&&c[2]==='整理した名前'));
+ notify({busy:true});assert.equal(node('mergeRelationship').disabled,true);assert.equal(node('renameRelationship').disabled,true);
+});
+test('empty long-term memory still explains that short-term conversation history is available',async()=>{
+ const {node,notify}=await boot('control');assert.match(node('memoryAvailability').textContent,/直近の会話は履歴から参照/);assert.match(node('memoryAvailability').textContent,/整理完了の日時は未記録です/);
+ notify({settings:{...DEFAULTS,model:'test',memoryAuto:false}});assert.match(node('memoryAvailability').textContent,/自動整理は無効/);
+ const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');assert.ok(html.includes('id="memoryAvailability"'));assert.ok(html.includes('未整理の会話が2往復'));
+});

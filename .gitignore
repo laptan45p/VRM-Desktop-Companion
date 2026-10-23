@@ -3,6 +3,7 @@ release/
 dist/
 *.log
 artifacts/
+.test-tmp/
 __pycache__/
 
 Irodori-TTS-Server/

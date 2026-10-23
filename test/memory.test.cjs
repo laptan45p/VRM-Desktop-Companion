@@ -7,7 +7,7 @@ test('memory migration and validation keep legacy history and settings; memory i
  assert.equal(M.clean({items:[null,{text:4}]}).items.length,0);assert.equal(M.clean({summary:'あ'.repeat(1000)}).summary.length,600);
 });
 test('automatic work only runs at thresholds and summarizes turns outside short-term history',()=>{
- assert.equal(M.plan(null,history(5),12),null);const job=M.plan(null,history(6),12);assert.equal(job.summaryTurns.length,0);assert.equal(job.extractTurns.length,6);
+ assert.equal(M.plan(null,history(1),12),null);assert.equal(M.plan(null,history(2),12).extractTurns.length,2);const job=M.plan(null,history(6),12);assert.equal(job.summaryTurns.length,0);assert.equal(job.extractTurns.length,6);
  const old=M.plan(null,history(10),6);assert.equal(old.summaryTurns.length,4);assert.equal(old.summaryTurns.at(-1).user,history(10)[6].content);assert.ok(!old.summaryTurns.some(t=>t.user===history(10).at(-2).content));
  assert.equal(M.plan(null,[],6,true),null);
 });
@@ -45,4 +45,22 @@ test('worker debounce, cancellation and stale completions never commit to anothe
 test('memory extraction uses the selected provider, bounded independent instructions and no character or assistant facts',async()=>{
  const old=global.fetch;let body;global.fetch=async(_url,o)=>{body=JSON.parse(o.body);return new Response(JSON.stringify({message:{content:'{"summary":"","facts":[]}'}}),{headers:{'Content-Type':'application/json'}});};
  try{const s={...DEFAULTS,model:'test',persona:'秘密の性格設定',name:'キャラ名',selfPronoun:'あたし'};await organizeMemory(s,M.plan(null,history(1),6,true));assert.equal(body.options.num_predict,1024);assert.equal(body.options.temperature,.2);assert.ok(!body.messages[0].content.includes('秘密の性格設定'));assert.ok(!body.messages[0].content.includes('あたし'));const input=JSON.parse(body.messages[1].content);assert.equal(input.userSources.length,1);assert.equal(input.olderConversation.length,0);assert.equal(input.userSources[0].text,history(1)[0].content);}finally{global.fetch=old;}
+});
+
+test('short follow-up questions retain relevant saved notes and empty memory still supplies grounding instructions',()=>{
+ let m=M.edit(null,'','好きな食べ物はカレーです','preference',100);m=M.edit(m,'','趣味は天体観測です','preference',200);
+ assert.ok(M.recall(m,'前回の会話は思い出せる？').length);assert.ok(M.recall(m,'何話した？').length);assert.ok(M.recall(m,'何を話した？').length);
+ const context=M.context(m,'具体的には？',[{role:'user',content:'好きな食べ物を覚えてる？'},{role:'assistant',content:'覚えています。'}]);assert.ok(context.includes('カレー'));
+ const empty=M.context(null,'前の会話は？');assert.match(empty,/具体的な根拠がなければ/);assert.match(empty,/過去のassistant/);assert.match(empty,/"conversationSummary":""/);assert.match(empty,/"relatedNotes":\[\]/);
+ assert.equal(M.recall(m,'VRMの描画設定について').length,0);
+});
+test('automatic organization starts after two turns and exposes progress even when no lasting fact is found',()=>{
+ assert.equal(M.plan(null,history(1),12),null);const job=M.plan(null,history(2),12);assert.equal(job.extractTurns.length,2);assert.equal(job.summaryTurns.length,0);
+ const m=M.apply(null,job,{summary:'',facts:[]},12345),stats=M.describe(m,history(2),12);assert.equal(m.organizedAt,12345);assert.equal(m.items.length,0);assert.equal(stats.shortTermTurns,2);assert.equal(stats.pendingTurns,0);assert.equal(stats.pendingSummaryTurns,0);
+ assert.equal(M.clean(JSON.parse(JSON.stringify(m))).organizedAt,12345);assert.equal(M.plan(m,history(3),2).summaryTurns.length,1);
+});
+test('merged notes respect target bounds without mutating sources or losing source attribution',()=>{
+ let target=M.clean(),source=M.clean();for(let i=0;i<100;i++)target=M.edit(target,'','現在の記録'+i);
+ source=M.edit(source,'','統合元だけの記録');source.summary='以前の話題';const snapshot=structuredClone(source),merged=M.merge(target,source);assert.equal(merged.items.length,100);assert.deepEqual(source,snapshot);assert.match(merged.summary,/以前/);
+ const small=M.merge(M.edit(null,'','共通の記録'),M.edit(source,'','共通の記録'));assert.equal(small.items.length,2);assert.equal(small.items.filter(i=>i.text==='共通の記録').length,1);assert.equal(small.items.find(i=>i.text==='統合元だけの記録').source.type,'manual');
 });
