@@ -7,7 +7,7 @@ const {randomBytes}=require('node:crypto');
 const MODEL='companion-gguf';
 function endpoint(settings){return `http://127.0.0.1:${settings.llamaPort}`;}
 function launchArgs(s,key){
- const args=['--model',s.llamaModelPath,'--alias',MODEL,'--host','127.0.0.1','--port',String(s.llamaPort),'--ctx-size',String(s.llamaContext),'--n-gpu-layers',String(s.llamaGpuLayers),'--parallel','1','--api-key',key,'--dry-multiplier',String(s.llamaDryMultiplier),'--dry-base',String(s.llamaDryBase),'--dry-allowed-length',String(s.llamaDryAllowedLength),'--dry-penalty-last-n','-1','--repeat-penalty','1.0'];
+ const args=['--model',s.llamaModelPath,'--alias',MODEL,'--host','127.0.0.1','--port',String(s.llamaPort),'--ctx-size',String(s.llamaContext),'--n-gpu-layers',String(s.llamaGpuLayers),'--parallel','1','--api-key',key,'--dry-multiplier',String(s.llamaDryMultiplier),'--dry-base',String(s.llamaDryBase),'--dry-allowed-length',String(s.llamaDryAllowedLength),'--dry-penalty-last-n',String(s.llamaContext),'--repeat-penalty','1.0'];
  if(s.llamaTemplate!=='auto')args.push('--chat-template',s.llamaTemplate);
  return args;
 }

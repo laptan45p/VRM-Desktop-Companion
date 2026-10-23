@@ -40,10 +40,10 @@ test('real managed child accepts authenticated discovery and chat with DRY; norm
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'llama-process-'));let manager;
  try{
  const probe=http.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));
- const script=path.join(dir,'mock-server.cjs');await fs.writeFile(script,`const http=require('node:http');const args=process.argv.slice(2),get=k=>args[args.indexOf(k)+1],key=get('--api-key');http.createServer(async(req,res)=>{res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='Bearer '+key){res.writeHead(401);res.end('{}');return;}if(req.url==='/v1/models'){res.end(JSON.stringify({data:[{id:'companion-gguf'}]}));return;}let raw='';for await(const chunk of req)raw+=chunk;res.end(JSON.stringify({choices:[{message:{content:raw}}]}));}).listen(Number(get('--port')),'127.0.0.1');`);
+ const script=path.join(dir,'mock-server.cjs');await fs.writeFile(script,`const http=require('node:http');const args=process.argv.slice(2),get=k=>args[args.indexOf(k)+1],key=get('--api-key');if(Number(get('--dry-penalty-last-n'))<0){console.error('invalid dry-penalty-last-n');process.exit(2);}http.createServer(async(req,res)=>{res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='Bearer '+key){res.writeHead(401);res.end('{}');return;}if(req.url==='/v1/models'){res.end(JSON.stringify({data:[{id:'companion-gguf'}]}));return;}let raw='';for await(const chunk of req)raw+=chunk;if(JSON.parse(raw).dry_penalty_last_n<0){res.writeHead(400);res.end(JSON.stringify({error:{message:'invalid dry_penalty_last_n'}}));return;}res.end(JSON.stringify({choices:[{message:{content:raw}}]}));}).listen(Number(get('--port')),'127.0.0.1');`);
  manager=new LlamaServer({defaultExecutable:process.execPath,validate:async()=>{},spawnProcess:(_exe,args,options)=>require('node:child_process').spawn(process.execPath,[script,...args],options),startupTimeout:10000});
  const s=cleanSettings({provider:'llamacpp',llamaPort:port,llamaModelPath:'/models/Qwen3.gguf'});await manager.start(s);const apiKey=manager.credentials(s);assert.deepEqual(await listModels(s,{apiKey}),[MODEL]);
- const body=JSON.parse(await chat(s,[],'こんにちは',null,{apiKey}));assert.equal(body.dry_multiplier,.8);assert.equal(body.dry_base,1.75);assert.equal(body.dry_allowed_length,2);assert.equal(body.dry_penalty_last_n,-1);assert.equal(body.repeat_penalty,1);assert.equal(body.chat_template_kwargs.enable_thinking,false);assert.equal(body.messages.at(-1).content,'こんにちは');assert.equal(body.stream,false);
+ const body=JSON.parse(await chat(s,[],'こんにちは',null,{apiKey}));assert.equal(body.dry_multiplier,.8);assert.equal(body.dry_base,1.75);assert.equal(body.dry_allowed_length,2);assert.equal(body.dry_penalty_last_n,s.llamaContext);assert.equal(body.repeat_penalty,1);assert.equal(body.chat_template_kwargs.enable_thinking,false);assert.equal(body.messages.at(-1).content,'こんにちは');assert.equal(body.stream,false);
  await manager.stop();assert.equal(manager.child,null);
  }finally{await manager?.stop();await fs.rm(dir,{recursive:true,force:true});}
 });
@@ -53,4 +53,14 @@ test('DRY is absent from other provider requests',async()=>{
  const captured=[];const server=http.createServer(async(req,res)=>{let raw='';for await(const chunk of req)raw+=chunk;captured.push(JSON.parse(raw));res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{content:'返答'}}],message:{content:'返答'}}));});await new Promise(r=>server.listen(0,'127.0.0.1',r));
  try{for(const provider of ['ollama','lmstudio'])await chat(cleanSettings({provider,endpoint:'http://127.0.0.1:'+server.address().port,model:'test-model'}),[],'こんにちは');for(const body of captured){assert.equal(body.dry_multiplier,undefined);assert.equal(body.chat_template_kwargs,undefined);assert.equal(body.repeat_penalty,undefined);}}
  finally{await new Promise(r=>server.close(r));}
+});
+
+
+test('DRY uses a positive configured context window accepted by the bundled llama.cpp parser',()=>{
+ for(const llamaContext of [512,2048,4096,8192,32768]){
+  const s=cleanSettings({provider:'llamacpp',llamaContext}),args=launchArgs(s,'test-key');
+  const value=Number(args[args.indexOf('--dry-penalty-last-n')+1]);
+  assert.ok(Number.isSafeInteger(value)&&value>0,'llama.cpp b11829 rejects negative DRY windows');
+  assert.equal(value,Number(args[args.indexOf('--ctx-size')+1]),'DRY covers the configured context');
+ }
 });

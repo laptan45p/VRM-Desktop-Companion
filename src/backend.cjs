@@ -103,7 +103,7 @@ async function chat(settings, history, userText, signal, {maxTokens,timeoutMs=18
   const messages = [{role:'system',content:`あなたの名前は「${settings.name}」です。\n${settings.persona}${settings.selfPronoun?'\n自分を指す一人称は「'+settings.selfPronoun+'」を使ってください。':''}${settings.userAddress?'\n会話相手に呼びかける際は「'+settings.userAddress+'」と呼んでください。毎回呼びかける必要はありません。':''}${systemExtra?"\n"+systemExtra:""}`}, ...history.slice(-settings.historyTurns * 2), {role:'user',content:userText}];
   const ollama = settings.provider === 'ollama';
   const body = {model:settings.model, messages, stream:false, ...(ollama ? {options:{temperature:settings.temperature,num_predict:maxTokens}} : {temperature:settings.temperature,max_tokens:maxTokens})};
-  if(settings.provider==='llamacpp')Object.assign(body,{dry_multiplier:settings.llamaDryMultiplier,dry_base:settings.llamaDryBase,dry_allowed_length:settings.llamaDryAllowedLength,dry_penalty_last_n:-1,repeat_penalty:1.0,chat_template_kwargs:{enable_thinking:false}});
+  if(settings.provider==='llamacpp')Object.assign(body,{dry_multiplier:settings.llamaDryMultiplier,dry_base:settings.llamaDryBase,dry_allowed_length:settings.llamaDryAllowedLength,dry_penalty_last_n:settings.llamaContext,repeat_penalty:1.0,chat_template_kwargs:{enable_thinking:false}});
   if(cloud){
     delete body.temperature;delete body.max_tokens;
     body[settings.provider==='openai'?'max_completion_tokens':settings.provider==='openrouter'?'max_tokens':settings.compatibleTokenParam]=maxTokens;
