@@ -8,6 +8,8 @@ const {ApiKeys}=require('./api-keys.cjs');
 const {VoiceLane,checkEmbedding}=require('./tts.cjs');
 const {ReactionCounter}=require('./interaction.cjs');
 const reactions=new ReactionCounter();
+const {LlamaServer}=require('./llama-server.cjs');
+let llama, llamaQuitPending=false;
 let expressionNames=[];
 let goodbye=null,goodbyeTimer=null;
 let startupGreetingDone=false,startupWindowsReady=false,startupMascotReady=false;
@@ -56,7 +58,7 @@ function finishVoice(id,phase,error=''){
  if(goodbye?.id===id)scheduleGoodbyeExit(phase==='start'?30000:phase==='ended'?700:2000);
 }
 const gotLock=app.requestSingleInstanceLock();if(!gotLock)app.quit();
-function credentials(settings){return isCloud(settings.provider)?keys.get(settings):'';}
+function credentials(settings){return settings.provider==='llamacpp'?llama.credentials(settings):isCloud(settings.provider)?keys.get(settings):'';}
 const allWindows=()=>[control,mascot,input,bubble].filter(w=>w&&!w.isDestroyed());
 function result(fn){return async(...args)=>{try{return {ok:true,data:await fn(...args)};}catch(e){return {ok:false,error:e.message};}};}
 function broadcast(extra={}){for(const w of allWindows())w.webContents.send('update',{settings:store.data.settings,history:store.data.history,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,...extra});}
@@ -159,6 +161,7 @@ if(gotLock)app.whenReady().then(async()=>{
  app.setAppUserModelId('local.vrm.desktop.companion');store=new Store(app.getPath('userData'));keys=new ApiKeys(app.getPath('userData'),safeStorage);
  try{keys.load();}catch{startupError='APIキーの保存データを読み込めません。クラウド利用時は登録し直してください。';}
  try{store.load();}catch(e){startupError='保存データを読み込めませんでした。設定を確認してください。';try{await fs.copyFile(store.file,store.file+'.backup-'+Date.now());}catch{}}
+ llama=new LlamaServer({defaultExecutable:path.join(app.isPackaged?path.dirname(process.execPath):path.join(__dirname,'..'),'llm-tools','llama-server','llama-server.exe'),onState:llamaState=>broadcast({llamaState})});
  voices.initialize(store.data);characters.initialize(store.data);
  store.data.relationships=relationship.clean(store.data.relationships,store.data.settings.name);
  if(store.data.settings.modelPath&&!store.data.relationships.bindings.length)relationship.select(store.data.relationships,store.data.relationships.active,store.data.settings.modelPath,store.data.history);
@@ -198,17 +201,20 @@ if(gotLock)app.whenReady().then(async()=>{
  applyHit();mascot.showInactive();mascot.setBounds(mascotLocation,false);capturePosition(mascot,'mascot');positionPopups();if(startupError)speak(startupError,{voice:false});startupWindowsReady=true;greetOnStartup();
 });
 app.on('second-instance',()=>{if(input)showInput();});
-app.on('before-quit',()=>{
+app.on('before-quit',e=>{
+ if(!app.isQuitting&&!llamaQuitPending&&(llama?.child||llama?.starting||llama?.stopping)){e?.preventDefault();llamaQuitPending=true;active?.abort();touchResponses.cancel();llama.stop().then(()=>app.quit(),error=>{console.error(error.message);app.quit();});return;}
  clearTimeout(goodbyeTimer);goodbyeTimer=null;
  app.isQuitting=true;clearInterval(topmostInterval);topmostInterval=null;cancelVoice(false);touchResponses.cancel();active?.abort();clearTimeout(speechTimer);clearTimeout(inputSaveTimer);inputSaveTimer=null;
  if(store){for(const [w,prefix] of [[control,'control'],[mascot,'mascot'],[input,'input'],[bubble,'bubble']])capturePosition(w,prefix);captureDisplayAreas();try{store.save();}catch(e){console.error('終了時の位置を保存できません:',e.message);}}
 });
 app.on('will-quit',()=>globalShortcut.unregisterAll());app.on('window-all-closed',()=>app.quit());
 function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=>{if(!allWindows().some(w=>w.webContents===e.sender)||only&&e.sender!==only()?.webContents)throw new Error('不明なウィンドウです。');if(goodbye&&!['state','voice-state','model-status','hit','bubble-size'].includes(channel)&&!(channel==='action'&&['quit','stop-voice','close-bubble'].includes(args[0])))throw new Error('終了の挨拶中です。');return fn(...args);}));}
-handle('state',()=>({...store.data,version:app.getVersion?.()||'',relationships:undefined,voiceBindings:undefined,characterBindings:undefined,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus}));
-handle('save',settings=>{
+handle('state',()=>({...store.data,version:app.getVersion?.()||'',relationships:undefined,voiceBindings:undefined,characterBindings:undefined,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus,llamaState:llama?.status()}));
+handle('save',async settings=>{
  if(active)throw new Error('生成を停止してから設定を変更してください。');
  const cleaned=cleanSettings(settings);if(isCloud(cleaned.provider))llmBase(cleaned);
+ if(llama?.child||llama?.starting){const runtimeKeys=['provider','llamaExecutable','llamaModelPath','llamaPort','llamaContext','llamaGpuLayers','llamaTemplate'];if(runtimeKeys.some(k=>cleaned[k]!==store.data.settings[k]))await llama.stop();}
+ if(active)throw new Error('生成を停止してから設定を変更してください。');
  cancelVoice();touchResponses.cancel();clearTimeout(speechTimer);if(speech)armSpeechTimer();
  const previous=structuredClone(store.data);
  store.data.settings=cleanSettings({...settings,speakerPath:store.data.settings.speakerPath,modelPath:store.data.settings.modelPath,motionFolder:store.data.settings.motionFolder,inputX:store.data.settings.inputX,inputY:store.data.settings.inputY,bubbleX:store.data.settings.bubbleX,bubbleY:store.data.settings.bubbleY,mascotX:store.data.settings.mascotX,mascotY:store.data.settings.mascotY,controlX:store.data.settings.controlX,controlY:store.data.settings.controlY,displayAreas:store.data.settings.displayAreas});characters.bind(store.data,store.data.settings.modelPath,store.data.settings);
@@ -251,6 +257,17 @@ handle('motion-data',name=>motionFiles.readMotion(store.data.settings.motionFold
 handle('key-status',s=>{s=cleanSettings(s);return {saved:isCloud(s.provider)&&keys.has(s),available:keys.available()};},()=>control);
 handle('key-save',(s,key)=>{if(active)throw new Error('生成を停止してからAPIキーを変更してください。');s=cleanSettings(s);touchResponses.cancel();keys.set(s,key);return {saved:true};},()=>control);
 handle('key-delete',s=>{if(active)throw new Error('生成を停止してからAPIキーを変更してください。');s=cleanSettings(s);touchResponses.cancel();keys.delete(s);return {saved:false};},()=>control);
+handle('llama-status',()=>llama.status(),()=>control);
+handle('choose-llama-file',async kind=>{
+ if(!['executable','model'].includes(kind))throw new Error('ファイルの指定が不正です。');
+ const r=await dialog.showOpenDialog(control,{title:kind==='model'?'会話用GGUFモデルを選択':'llama-server.exeを選択',filters:[{name:kind==='model'?'GGUF':'llama-server',extensions:[kind==='model'?'gguf':'exe']}],properties:['openFile']});return r.canceled?null:r.filePaths[0];
+},()=>control);
+handle('llama-start',async()=>{
+ if(active)throw new Error('生成を停止してから起動してください。');
+ if(store.data.settings.provider!=='llamacpp')throw new Error('接続方式でllama-serverを選び、設定を保存してください。');
+ touchResponses.cancel();return llama.start({...store.data.settings});
+},()=>control);
+handle('llama-stop',async()=>{if(active)throw new Error('生成を停止してからサーバーを停止してください。');touchResponses.cancel();return llama.stop();},()=>control);
 handle('models',s=>{s=cleanSettings(s);return listModels(s,{apiKey:credentials(s)});},()=>control);handle('choose-vrm',selectVRM);
 handle('vrm',async()=>{const p=store.data.settings.modelPath;if(!p)return null;if((await fs.stat(p)).size>300*1024*1024)throw new Error('VRMが300MBを超えています。');return new Uint8Array(await fs.readFile(p));});
 handle('touch',(region,gesture)=>{
@@ -330,5 +347,6 @@ handle('action',name=>{
  else if(name==='menu')menu().popup({window:mascot});else if(name==='pass')setPass(!pass);else if(name==='hide')hideMascot();
  else if(name==='close-input')input.hide();else if(name==='close-bubble'){if(goodbye){cancelVoice();scheduleGoodbyeExit(700);}else hideSpeech();}else if(name==='quit')requestQuit();else if(name==='reset')resetMascot();
 });
+
 
 

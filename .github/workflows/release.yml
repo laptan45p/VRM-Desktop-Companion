@@ -26,6 +26,7 @@ jobs:
         run: |
           ./test/irodori-setup.Tests.ps1
           ./test/ollama-setup.Tests.ps1
+          ./test/llama-setup.Tests.ps1
       - run: npm ci
       - run: npm run build
       - run: npm test
@@ -52,5 +53,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Asset upload failed; release remains a draft' }
           gh release edit $tag --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Could not publish release' }
+
 
 

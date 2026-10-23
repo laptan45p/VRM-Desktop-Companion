@@ -16,6 +16,10 @@ contextBridge.exposeInMainWorld('companion', {
   keyStatus:s=>ipcRenderer.invoke('key-status',s),
   saveKey:(s,key)=>ipcRenderer.invoke('key-save',s,key),
   deleteKey:s=>ipcRenderer.invoke('key-delete',s),
+  llamaStatus:()=>ipcRenderer.invoke('llama-status'),
+  chooseLlamaFile:kind=>ipcRenderer.invoke('choose-llama-file',kind),
+  startLlama:()=>ipcRenderer.invoke('llama-start'),
+  stopLlama:()=>ipcRenderer.invoke('llama-stop'),
   models:s=>ipcRenderer.invoke('models',s),
   chooseVRM:()=>ipcRenderer.invoke('choose-vrm'),
   vrm:()=>ipcRenderer.invoke('vrm'),
@@ -32,4 +36,5 @@ contextBridge.exposeInMainWorld('companion', {
   action:name=>ipcRenderer.invoke('action',name),
   onUpdate:fn=>{const listener=(_e,data)=>fn(data);ipcRenderer.on('update',listener);return()=>ipcRenderer.removeListener('update',listener);},
 });
+
 

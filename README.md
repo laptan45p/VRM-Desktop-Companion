@@ -130,3 +130,8 @@ Windows版の作成は `npm run package:win` です。Gitにはソースを登�
 ### モデルの描画
 
 高画質固定で描画し、MToon本体材質はすべて陰影なしで表示します。画像に描かれた陰影・ハイライトと輪郭線は維持します。元VRMのファイルを変更せず、設定操作は不要です。
+
+
+## llama-serverとDRY
+
+CompanionからGGUFモデルを起動し、DRYで同じ文章の反復を抑えられます。`install_llama_server.bat`でサーバーを導入し、設定で接続方式をllama-serverにしてGGUFを選択・保存・起動してください。詳しくは[導入手順](LLAMA_SERVER_SETUP.md)を参照してください。

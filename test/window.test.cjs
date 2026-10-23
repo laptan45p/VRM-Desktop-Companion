@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{EventEmitter}=require('node:events');
 const {cleanSettings,DEFAULTS}=require('../src/backend.cjs');const layout=require('../src/layout.cjs');
-async function boot(saved={},touchGenerate=async()=>'LLMの反応',motionFiles=null,tts=null,llm=null,windowFixture=null,startupLoad=null){
+async function boot(saved={},touchGenerate=async()=>'LLMの反応',motionFiles=null,tts=null,llm=null,windowFixture=null,startupLoad=null,llamaFixture=null){
  const area={x:-1600,y:0,width:1600,height:900},handlers=new Map(),windows=[],screen=new EventEmitter(),app=new EventEmitter(),menus=[],trays=[],timers=[],intervals=[];let savedData=null,fileChoice='/motions',saveError=false;
  Object.assign(app,{requestSingleInstanceLock:()=>true,whenReady:()=>Promise.resolve(),getPath:()=>'/test-data',setAppUserModelId:()=>{},quit:()=>{app.quitCalls=(app.quitCalls||0)+1;}});
  screen.getPrimaryDisplay=()=>({workArea:area});screen.getDisplayMatching=()=>({workArea:area});screen.getAllDisplays=()=>[{workArea:area}];
@@ -10,7 +10,7 @@ async function boot(saved={},touchGenerate=async()=>'LLMの反応',motionFiles=n
  }
  class Store{constructor(){this.file='/test-data/companion.json';this.data={settings:{...DEFAULTS,scale:.5,...saved},history:[]};}load(){}save(){if(saveError)throw new Error('test disk failure');savedData=structuredClone(this.data);}}
  const electron={app,BrowserWindow:Window,ipcMain:{handle:(k,v)=>handlers.set(k,v)},dialog:{showOpenDialog:async()=>({canceled:false,filePaths:[fileChoice]})},Menu:{buildFromTemplate:v=>{const m={items:v,popup:()=>{m.opened=true;}};menus.push(m);return m;}},Tray:class extends EventEmitter{constructor(){super();trays.push(this);}setToolTip(){}popUpContextMenu(m){this.menu=m;}},nativeImage:{createFromPath:()=>({})},globalShortcut:{register:()=>true,unregisterAll:()=>{}},screen};
- const context={require:p=>p==='electron'?electron:p==='./api-keys.cjs'?{ApiKeys:class{constructor(){this.entries=new Map();}load(){}available(){return true;}scope(s){return s.provider+' '+require('../src/backend.cjs').llmBase(s);}has(s){return this.entries.has(this.scope(s));}get(s){return this.entries.get(this.scope(s))||'';}set(s,key){this.entries.set(this.scope(s),key);}delete(s){this.entries.delete(this.scope(s));}}}:p==='./tts.cjs'?(tts||require('../src/tts.cjs')):p==='./vrma-files.cjs'?(motionFiles||require('../src/vrma-files.cjs')):p==='./backend.cjs'?{Store,cleanSettings,DEFAULTS,isCloud:require('../src/backend.cjs').isCloud,llmBase:require('../src/backend.cjs').llmBase,chat:llm?.chat|| (async(_s,_h,t)=>'返事：'+t),listModels:llm?.listModels||(async()=>[]),touchReply:touchGenerate}:p==='./farewell.cjs'?{farewell:()=>'またね〜。またお話ししようね。',greeting:()=>'こんにちは〜。会えてうれしいよ。'}:p==='./character-bindings.cjs'?require('../src/character-bindings.cjs'):p==='./voice-bindings.cjs'?require('../src/voice-bindings.cjs'):p==='./relationship.cjs'?require('../src/relationship.cjs'):p==='./layout.cjs'?layout:p==='./interaction.cjs'?require('../src/interaction.cjs'):p==='./touch-response.cjs'?{TouchResponder:class extends require('../src/touch-response.cjs').TouchResponder{constructor(options){super({...options,setTimer:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimer:()=>{}});}}}:require(p),__dirname:path.resolve(__dirname,'../src'),setInterval:(fn,ms)=>{const t={fn,ms,unref(){}};intervals.push(t);return t;},clearInterval:t=>{if(t)t.cleared=true;},structuredClone,AbortController,console,setTimeout:(fn,ms)=>{const t={fn,ms,unref(){}};timers.push(t);return t;},clearTimeout:t=>{if(t)t.cleared=true;}};
+ const context={require:p=>p==='electron'?electron:p==='./llama-server.cjs'?(llamaFixture||require('../src/llama-server.cjs')):p==='./api-keys.cjs'?{ApiKeys:class{constructor(){this.entries=new Map();}load(){}available(){return true;}scope(s){return s.provider+' '+require('../src/backend.cjs').llmBase(s);}has(s){return this.entries.has(this.scope(s));}get(s){return this.entries.get(this.scope(s))||'';}set(s,key){this.entries.set(this.scope(s),key);}delete(s){this.entries.delete(this.scope(s));}}}:p==='./tts.cjs'?(tts||require('../src/tts.cjs')):p==='./vrma-files.cjs'?(motionFiles||require('../src/vrma-files.cjs')):p==='./backend.cjs'?{Store,cleanSettings,DEFAULTS,isCloud:require('../src/backend.cjs').isCloud,llmBase:require('../src/backend.cjs').llmBase,chat:llm?.chat|| (async(_s,_h,t)=>'返事：'+t),listModels:llm?.listModels||(async()=>[]),touchReply:touchGenerate}:p==='./farewell.cjs'?{farewell:()=>'またね〜。またお話ししようね。',greeting:()=>'こんにちは〜。会えてうれしいよ。'}:p==='./character-bindings.cjs'?require('../src/character-bindings.cjs'):p==='./voice-bindings.cjs'?require('../src/voice-bindings.cjs'):p==='./relationship.cjs'?require('../src/relationship.cjs'):p==='./layout.cjs'?layout:p==='./interaction.cjs'?require('../src/interaction.cjs'):p==='./touch-response.cjs'?{TouchResponder:class extends require('../src/touch-response.cjs').TouchResponder{constructor(options){super({...options,setTimer:fn=>{const t={fn,unref(){}};timers.push(t);return t;},clearTimer:()=>{}});}}}:require(p),__dirname:path.resolve(__dirname,'../src'),setInterval:(fn,ms)=>{const t={fn,ms,unref(){}};intervals.push(t);return t;},clearInterval:t=>{if(t)t.cleared=true;},structuredClone,AbortController,console,setTimeout:(fn,ms)=>{const t={fn,ms,unref(){}};timers.push(t);return t;},clearTimeout:t=>{if(t)t.cleared=true;}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/main.cjs'),'utf8'),context);await new Promise(r=>setImmediate(r));
  const invoke=(channel,...args)=>handlers.get(channel)({sender:windows[0].webContents},...args);
  const as=(i,channel,...args)=>handlers.get(channel)({sender:windows[i].webContents},...args);
@@ -336,4 +336,27 @@ test('VRM switch restores persona and addressing; failed settings saves or switc
   for(const window of b.windows)assert.ok(window.events.some(e=>e.reloadVRM&&e.settings.name==='Bの子'));
   assert.equal((await b.invoke('state')).data.characterBindings,undefined);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+
+
+test('llama management is control-only; authenticated chat, configuration changes and quit use the owned server',async()=>{
+ const calls=[];let server;
+ const llamaFixture={LlamaServer:class{
+  constructor(options){this.options=options;this.phase='stopped';server=this;}
+  status(){return {phase:this.phase};}
+  credentials(){if(this.phase!=='running')throw new Error('サーバーを起動してください。');return 'private-process-key';}
+  async start(s){calls.push(['start',s]);this.child={};this.phase='running';this.options.onState(this.status());return this.status();}
+  async stop(){calls.push(['stop']);this.child=null;this.phase='stopped';this.options.onState(this.status());return this.status();}
+ }};
+ const llm={chat:async(s,h,t,signal,options)=>{calls.push(['chat',options.apiKey]);return '返答';},listModels:async(s,options)=>{calls.push(['models',options.apiKey]);return ['companion-gguf'];}};
+ const b=await boot({},undefined,null,null,llm,null,null,llamaFixture);
+ assert.equal((await b.as(1,'llama-start')).ok,false);assert.equal((await b.as(2,'llama-stop')).ok,false);assert.equal((await b.as(1,'choose-llama-file','model')).ok,false);assert.equal((await b.invoke('choose-llama-file','unknown')).ok,false);
+ assert.equal((await b.invoke('llama-start')).ok,false);assert.equal(calls.length,0);
+ const settings=cleanSettings({provider:'llamacpp',llamaModelPath:'/models/Qwen.gguf'});await b.invoke('save',settings);assert.equal((await b.invoke('chat','こんにちは')).ok,false);
+ await b.invoke('llama-start');await b.invoke('models',settings);await b.invoke('chat','こんにちは');assert.ok(calls.some(c=>c[0]==='chat'&&c[1]==='private-process-key'));assert.ok(calls.some(c=>c[0]==='models'&&c[1]==='private-process-key'));assert.ok(!JSON.stringify((await b.invoke('state')).data).includes('private-process-key'));
+ await b.invoke('save',{...settings,llamaDryMultiplier:.4});assert.equal(server.phase,'running','DRY changes apply per request without reloading the model');
+ await b.invoke('save',{...settings,llamaContext:2048});assert.equal(server.phase,'stopped');await b.invoke('llama-start');
+ let prevented=false;b.app.emit('before-quit',{preventDefault(){prevented=true;}});await new Promise(r=>setImmediate(r));assert.equal(prevented,true);assert.equal(server.phase,'stopped');assert.equal(b.app.quitCalls,1);
+ b.app.emit('before-quit',{preventDefault(){throw new Error('Quit may not loop.');}});assert.equal(b.app.isQuitting,true);
 });

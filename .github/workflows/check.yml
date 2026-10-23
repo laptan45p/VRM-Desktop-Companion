@@ -27,4 +27,6 @@ jobs:
         run: |
           ./test/irodori-setup.Tests.ps1
           ./test/ollama-setup.Tests.ps1
+          ./test/llama-setup.Tests.ps1
+
 

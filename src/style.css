@@ -13,3 +13,6 @@ body.input{background:#f7f5ee;margin:0}html.input-root{height:100%;overflow:hidd
 
 /* Conversation input keeps its composer visible while the log scrolls. */
 body.input{height:100vh;overflow:hidden}#inputPanel{height:100%;display:flex;flex-direction:column;gap:12px}#inputHistory{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:4px 3px 10px;scrollbar-gutter:stable}#inputHistory .msg{font-size:13px;padding:9px 12px}#inputHistory .empty{margin:auto 0;padding:20px 10px}#inputForm{flex-shrink:0;border-top:1px solid #dedfd4;padding-top:10px}
+
+
+#llamaSettings{padding:12px 0 20px;border-bottom:1px solid #dbe2d9;margin-bottom:18px}#llamaSettings>button{margin:4px 3px 4px 0}#llamaProgress{display:block;width:100%;height:12px;margin-top:10px;accent-color:#50876f}#llamaLog{font-family:monospace;font-size:11px;white-space:pre;overflow:auto}#llamaSettings summary{cursor:pointer;margin-bottom:12px}

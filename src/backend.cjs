@@ -4,18 +4,19 @@ const path = require('node:path');
 const voices=require('./voice-bindings.cjs');
 const characters=require('./character-bindings.cjs');
 const DEFAULTS = {
+  llamaExecutable: '', llamaModelPath: '', llamaPort: 18080, llamaContext: 4096, llamaGpuLayers: 99, llamaTemplate: 'auto', llamaDryMultiplier: .8, llamaDryBase: 1.75, llamaDryAllowedLength: 2,
   cloudMaxTokens: 1024, cloudReasoning: 'auto', cloudTemperature: false, compatibleTokenParam: 'max_tokens', provider: 'ollama', endpoint: 'http://127.0.0.1:11434', model: '',
   name: 'コンパニオン', selfPronoun: '', userAddress: '', persona: 'あなたはデスクトップに住む親しみやすい相棒です。日本語で自然に会話してください。返答は基本的に短く、相手の話をよく聞いてください。',
   temperature: 0.7, historyTurns: 12, ttsEnabled: false, ttsEndpoint: 'http://127.0.0.1:8088', speakerPath: '', ttsCaption: '', ttsSpeed: 1, ttsVolume: .8, ttsTimeout: 300, modelPath: '', motionFolder: '', greetingMotion: 'VRMA_02.vrma', randomMotion: true, motionInterval: 60, idleMotion: '', idleMode: 'loop', idleSpeed: 1, idlePose: 50, scale: 1, angle: 0, angleX: 0, angleY: 0, angleZ: 0, topmost: true, inputX: null, inputY: null, mascotX: null, mascotY: null, controlX: null, controlY: null, displayAreas: [], lipSync: true, softIdle: true, motionStrength: 0.65, touchEnabled: true, clothDrag: true, handDrag: true, clothReach: .18, clothAngle: 80, touchZoneScale: 1, bubbleX: null, bubbleY: null, bubbleFont: 'Yu Gothic UI', bubbleFontSize: 13,
 };
 function cleanSettings(input = {}) {
   const s = { ...DEFAULTS };
-  for (const k of ['provider','endpoint','model','name','persona','modelPath','bubbleFont','motionFolder','greetingMotion','idleMotion','ttsEndpoint','speakerPath','ttsCaption']) if (typeof input[k] === 'string') s[k] = input[k].slice(0, k === 'persona' ? 12000 : 2000);
+  for (const k of ['llamaExecutable','llamaModelPath','provider','endpoint','model','name','persona','modelPath','bubbleFont','motionFolder','greetingMotion','idleMotion','ttsEndpoint','speakerPath','ttsCaption']) if (typeof input[k] === 'string') s[k] = input[k].slice(0, k === 'persona' ? 12000 : 2000);
   for(const k of ['selfPronoun','userAddress'])if(typeof input[k]==='string')s[k]=input[k].trim().slice(0,100);
-  if (!['ollama', 'lmstudio','openai','openrouter','compatible'].includes(s.provider)) throw new Error('接続方式を選んでください。');
+  if (!['ollama', 'lmstudio','llamacpp','openai','openrouter','compatible'].includes(s.provider)) throw new Error('接続方式を選んでください。');
   if(s.provider==='openrouter')s.endpoint='https://openrouter.ai/api/v1';
   if(s.provider==='openai'&&!s.model.trim())s.model='gpt-6-luna';
-  for (const [k,min,max] of [['temperature',0,2],['historyTurns',1,40],['scale',0.5,10.0],['angle',-180,180],['angleX',-180,180],['angleY',-180,180],['angleZ',-180,180],['motionStrength',0,1],['touchZoneScale',.75,1.4],['bubbleFontSize',8,72],['clothReach',.02,.5],['clothAngle',10,120],['motionInterval',10,3600],['idleSpeed',.1,3],['idlePose',0,100],['ttsSpeed',.25,4],['ttsVolume',0,1],['ttsTimeout',30,900],['cloudMaxTokens',128,8192]]) {
+  for (const [k,min,max] of [['llamaPort',1024,65535],['llamaContext',512,32768],['llamaGpuLayers',0,999],['llamaDryMultiplier',0,3],['llamaDryBase',1.01,3],['llamaDryAllowedLength',1,20],['temperature',0,2],['historyTurns',1,40],['scale',0.5,10.0],['angle',-180,180],['angleX',-180,180],['angleY',-180,180],['angleZ',-180,180],['motionStrength',0,1],['touchZoneScale',.75,1.4],['bubbleFontSize',8,72],['clothReach',.02,.5],['clothAngle',10,120],['motionInterval',10,3600],['idleSpeed',.1,3],['idlePose',0,100],['ttsSpeed',.25,4],['ttsVolume',0,1],['ttsTimeout',30,900],['cloudMaxTokens',128,8192]]) {
     if (Number.isFinite(Number(input[k]))) s[k] = Math.max(min, Math.min(max, Number(input[k])));
   }
   for(const k of ['inputX','inputY','bubbleX','bubbleY','mascotX','mascotY','controlX','controlY'])if(typeof input[k]==='number'&&Number.isFinite(input[k]))s[k]=Math.round(Math.max(-100000,Math.min(100000,input[k])));
@@ -28,6 +29,9 @@ function cleanSettings(input = {}) {
   if(['max_tokens','max_completion_tokens'].includes(input.compatibleTokenParam))s.compatibleTokenParam=input.compatibleTokenParam;
   if(typeof input.cloudTemperature==='boolean')s.cloudTemperature=input.cloudTemperature;
   s.historyTurns = Math.round(s.historyTurns);
+  for(const k of ['llamaPort','llamaContext','llamaGpuLayers','llamaDryAllowedLength'])s[k]=Math.round(s[k]);
+  if(['auto','mistral-v1','mistral-v3-tekken','chatml','llama3'].includes(input.llamaTemplate))s.llamaTemplate=input.llamaTemplate;
+  if(s.provider==='llamacpp'){s.endpoint=require('./llama-server.cjs').endpoint(s);s.model=require('./llama-server.cjs').MODEL;}
   for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled'])if(typeof input[k]==='boolean')s[k]=input[k];
   return s;
 }
@@ -43,6 +47,7 @@ function localBase(endpoint) {
 }
 function isCloud(provider){return provider==='openai'||provider==='openrouter'||provider==='compatible';}
 function llmBase(settings){
+ if(settings.provider==='llamacpp')return require('./llama-server.cjs').endpoint(settings);
  if(!isCloud(settings.provider))return localBase(settings.endpoint);
  let u;try{u=new URL(settings.endpoint);}catch{throw new Error('接続先URLを確認してください。');}
  if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash)throw new Error('クラウドLLMには認証情報やクエリを含まないHTTPSのベースURLを指定してください。');
@@ -57,6 +62,7 @@ function llmBase(settings){
  const base=u.href.replace(/\/+$/,'');if(/\/(?:chat\/completions|models)$/.test(base))throw new Error('APIのベースURLを指定してください（例：https://example.com/v1）。');return base;
 }
 function authorization(settings,apiKey){
+ if(settings.provider==='llamacpp'){if(!apiKey)throw new Error('llama-serverを起動してください。');return {Authorization:'Bearer '+apiKey};}
  if(!isCloud(settings.provider))return {};
  if(typeof apiKey!=='string'||!apiKey.trim()||!/^[\x21-\x7e]+$/.test(apiKey))throw new Error('この接続先のAPIキーを登録してください。');
  return {Authorization:'Bearer '+apiKey};
@@ -96,6 +102,7 @@ async function chat(settings, history, userText, signal, {maxTokens,timeoutMs=18
   const messages = [{role:'system',content:`あなたの名前は「${settings.name}」です。\n${settings.persona}${settings.selfPronoun?'\n自分を指す一人称は「'+settings.selfPronoun+'」を使ってください。':''}${settings.userAddress?'\n会話相手に呼びかける際は「'+settings.userAddress+'」と呼んでください。毎回呼びかける必要はありません。':''}${systemExtra?"\n"+systemExtra:""}`}, ...history.slice(-settings.historyTurns * 2), {role:'user',content:userText}];
   const ollama = settings.provider === 'ollama';
   const body = {model:settings.model, messages, stream:false, ...(ollama ? {options:{temperature:settings.temperature,num_predict:maxTokens}} : {temperature:settings.temperature,max_tokens:maxTokens})};
+  if(settings.provider==='llamacpp')Object.assign(body,{dry_multiplier:settings.llamaDryMultiplier,dry_base:settings.llamaDryBase,dry_allowed_length:settings.llamaDryAllowedLength,dry_penalty_last_n:-1,repeat_penalty:1.0,chat_template_kwargs:{enable_thinking:false}});
   if(cloud){
     delete body.temperature;delete body.max_tokens;
     body[settings.provider==='openai'?'max_completion_tokens':settings.provider==='openrouter'?'max_tokens':settings.compatibleTokenParam]=maxTokens;
@@ -143,6 +150,7 @@ class Store {
   }
 }
 module.exports = {isCloud,llmBase,DEFAULTS, cleanSettings, localBase, requestJSON, listModels, chat, touchReply, Store};
+
 
 
 

@@ -7,3 +7,7 @@ __pycache__/
 
 Irodori-TTS-Server/
 tts-logs/
+
+
+llm-tools/llama-server/
+llm-tools/.llama-setup-*/
