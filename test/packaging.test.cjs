@@ -25,7 +25,7 @@ for file in pathlib.Path(sys.argv[1]).glob('*.zip'):
    assert (b'ollama_setup.ps1' if name == 'install_ollama.bat' else b'llama_setup.ps1' if name == 'install_llama_server.bat' else b'irodori_server.ps1') in data if name.endswith('.bat') else data.startswith(b'\\xef\\xbb\\xbf')
    if name.endswith('.bat'): assert b'\\r\\n' in data and b'\\n' not in data.replace(b'\\r\\n',b'')
   docs=prefix+('update-files/resources/app/' if file.name.endswith('-Update.zip') else '')
-  for name in ['README.md','USAGE.md','UPDATE.md','TTS_SETUP.md','OLLAMA_SETUP.md','LLAMA_SERVER_SETUP.md']:
+  for name in ['README.md','USAGE.md','UPDATE.md','TTS_SETUP.md','OLLAMA_SETUP.md','LLAMA_SERVER_SETUP.md','MEMORY.md']:
    assert z.read(docs+name).decode('utf-8').strip()
   assert not any('Irodori-TTS-Server/.venv' in n or '/tts-logs/' in n or '/llama-server/' in n or '.llama-setup-' in n for n in z.namelist())
   report.append(file.name)

@@ -10,7 +10,7 @@ from release_notes import release_notes
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = 'VRM-Desktop-Companion'
-DOCS = ['package.json', 'LICENSE', 'README.md', 'THIRD_PARTY_NOTICES.txt', 'UPDATE.md', 'VALIDATION.md', 'TTS_SETUP.md', 'OLLAMA_SETUP.md', 'LLAMA_SERVER_SETUP.md', 'USAGE.md']
+DOCS = ['package.json', 'LICENSE', 'README.md', 'THIRD_PARTY_NOTICES.txt', 'UPDATE.md', 'VALIDATION.md', 'TTS_SETUP.md', 'OLLAMA_SETUP.md', 'LLAMA_SERVER_SETUP.md', 'MEMORY.md', 'USAGE.md']
 
 def application(target):
     target.mkdir(parents=True, exist_ok=True)
@@ -109,7 +109,7 @@ def main():
         if asar.exists():
             asar.unlink()
         application(old)
-        for name in ['README.md', 'UPDATE.md', 'VALIDATION.md', 'THIRD_PARTY_NOTICES.txt', 'TTS_SETUP.md', 'OLLAMA_SETUP.md', 'LLAMA_SERVER_SETUP.md', 'USAGE.md']:
+        for name in ['README.md', 'UPDATE.md', 'VALIDATION.md', 'THIRD_PARTY_NOTICES.txt', 'TTS_SETUP.md', 'OLLAMA_SETUP.md', 'LLAMA_SERVER_SETUP.md', 'MEMORY.md', 'USAGE.md']:
             shutil.copy2(ROOT / name, portable / name)
         tts_helpers(portable)
         archive(portable, out / f'{APP}-v{version}-Windows-x64.zip', APP)

@@ -15,8 +15,8 @@ function status(id,text,error=false){$(id).textContent=text;$(id).classList.togg
 async function call(promise){const r=await promise;if(!r.ok)throw new Error(r.error);return r.data;}
 function wrap(fn,id='chatStatus'){return async(...args)=>{try{await fn(...args);}catch(e){status(id,e.message,true);}};}
 function selectControlTab(which){const chat=which==='chat';$('chatView').hidden=!chat;$('settingsView').hidden=chat;$('chatTab').classList.toggle('selected',chat);$('settingsTab').classList.toggle('selected',!chat);}
-function settingsFromForm(){const s={...state.settings};for(const id of ['llamaExecutable','llamaModelPath','llamaTemplate','provider','endpoint','model','name','persona','selfPronoun','userAddress','bubbleFont','greetingMotion','idleMotion','idleMode','ttsEndpoint','ttsCaption','cloudReasoning','compatibleTokenParam'])s[id]=$(id).value;for(const id of ['llamaPort','llamaContext','llamaGpuLayers','llamaDryMultiplier','llamaDryBase','llamaDryAllowedLength','temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose','ttsSpeed','ttsVolume','ttsTimeout','cloudMaxTokens'])s[id]=Number($(id).value);for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled','cloudTemperature'])s[k]=$(k).checked;s.clothReach=Number($('clothReach').value)/100;return s;}
-function fillSettings(s){for(const id of ['llamaExecutable','llamaModelPath','llamaTemplate','llamaPort','llamaContext','llamaGpuLayers','llamaDryMultiplier','llamaDryBase','llamaDryAllowedLength','provider','endpoint','name','persona','selfPronoun','userAddress','bubbleFont','temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose','ttsSpeed','ttsVolume','ttsTimeout','cloudMaxTokens'])$(id).value=s[id];for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled','cloudTemperature'])$(k).checked=s[k];$('clothReach').value=Math.round(s.clothReach*100);setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';$('motionPath').textContent=s.motionFolder||'モーション未選択';$('ttsEndpoint').value=s.ttsEndpoint;$('ttsCaption').value=s.ttsCaption;$('speakerPath').textContent=s.speakerPath||'Speaker Embedding未選択';$('idleMode').value=s.idleMode;setMotionOptions(motionNames,s.greetingMotion,s.idleMotion);$('cloudReasoning').value=s.cloudReasoning;$('compatibleTokenParam').value=s.compatibleTokenParam;updateProviderUI();}
+function settingsFromForm(){const s={...state.settings};for(const id of ['llamaExecutable','llamaModelPath','llamaTemplate','provider','endpoint','model','name','persona','selfPronoun','userAddress','bubbleFont','greetingMotion','idleMotion','idleMode','ttsEndpoint','ttsCaption','cloudReasoning','compatibleTokenParam'])s[id]=$(id).value;for(const id of ['llamaPort','llamaContext','llamaGpuLayers','llamaDryMultiplier','llamaDryBase','llamaDryAllowedLength','temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose','ttsSpeed','ttsVolume','ttsTimeout','cloudMaxTokens'])s[id]=Number($(id).value);for(const k of ['memoryEnabled','memoryAuto','topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled','cloudTemperature'])s[k]=$(k).checked;s.clothReach=Number($('clothReach').value)/100;return s;}
+function fillSettings(s){for(const id of ['llamaExecutable','llamaModelPath','llamaTemplate','llamaPort','llamaContext','llamaGpuLayers','llamaDryMultiplier','llamaDryBase','llamaDryAllowedLength','provider','endpoint','name','persona','selfPronoun','userAddress','bubbleFont','temperature','historyTurns','scale','angleX','angleY','angleZ','motionStrength','touchZoneScale','bubbleFontSize','clothAngle','motionInterval','idleSpeed','idlePose','ttsSpeed','ttsVolume','ttsTimeout','cloudMaxTokens'])$(id).value=s[id];for(const k of ['memoryEnabled','memoryAuto','topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled','cloudTemperature'])$(k).checked=s[k];$('clothReach').value=Math.round(s.clothReach*100);setModels(s.model?[s.model]:[],s.model);$('vrmPath').textContent=s.modelPath||'VRM未選択：デモ表示';$('motionPath').textContent=s.motionFolder||'モーション未選択';$('ttsEndpoint').value=s.ttsEndpoint;$('ttsCaption').value=s.ttsCaption;$('speakerPath').textContent=s.speakerPath||'Speaker Embedding未選択';$('idleMode').value=s.idleMode;setMotionOptions(motionNames,s.greetingMotion,s.idleMotion);$('cloudReasoning').value=s.cloudReasoning;$('compatibleTokenParam').value=s.compatibleTokenParam;updateProviderUI();}
 let motionNames=[];
 let expressionPath='',expressionNames=[],expressionRequest=0;
 function setExpressionOptions(names,modelPath){
@@ -48,6 +48,27 @@ function renderLlamaState(value=state.llamaState||{phase:'stopped'}){
  status('llamaStatus',value.error||({stopped:'停止中',starting:'GGUFモデルを読み込み中…',running:'起動済み：会話できます。',stopping:'停止しています…',error:'起動できませんでした。ログを確認してください。'}[phase]||phase),phase==='error');
  $('llamaLog').value=value.log||'';
 }
+let memoryData=null,memoryRequest=0,memoryEditing=false,summaryEditing=false;
+const memoryKinds={profile:'情報',preference:'好み',promise:'約束',event:'出来事'};
+function selectMemory(id=''){
+ const item=memoryData?.items.find(i=>i.id===id);$('memoryList').value=item?.id||'';$('memoryText').value=item?.text||'';$('memoryKind').value=item?.kind||'profile';memoryEditing=false;
+ $('memorySource').textContent=!item?'新しいメモを作成します。':item.source.type==='user'?'発言元：ユーザー'+(item.source.at?'（'+new Date(item.source.at).toLocaleString('ja-JP')+'）':'（日時不明）')+'\n原文：'+item.source.quote:'発言元：手動で登録・編集';
+}
+async function refreshMemory(force=false){
+ const request=++memoryRequest,data=await call(api.memoryView());if(request!==memoryRequest)return;
+ const changed=!memoryData||memoryData.profileId!==data.profileId,selected=$('memoryList').value;memoryData=data;
+ $('memoryInfo').textContent='対象：'+(state.relationship?.label||state.settings.name)+' ／ 長期メモ '+data.items.length+'件';
+ $('memoryList').replaceChildren();for(const item of data.items)$('memoryList').add(new Option('['+memoryKinds[item.kind]+'] '+item.text.replace(/\s+/g,' ').slice(0,70),item.id));
+ $('memoryList').value=selected;
+ if(changed||force||!summaryEditing){$('memorySummary').value=data.summary;summaryEditing=false;}
+ if(changed||force||!memoryEditing)selectMemory(changed?'':selected);
+}
+function updateMemoryBusy(){
+ const organizing=state.memoryStatus==='記憶を整理しています…';
+ for(const id of ['organizeMemory','saveMemory','deleteMemory','saveMemorySummary','clearMemory'])$(id).disabled=busy||organizing;
+ $('cancelMemory').disabled=!organizing;
+ if(state.memoryStatus!==undefined)status('memoryStatus',state.memoryStatus,/できませんでした/.test(state.memoryStatus));
+}
 function setModels(models,selected,showList=false){
  $('modelOptions').replaceChildren();$('modelList').replaceChildren();for(const m of models){$('modelOptions').append(new Option(m,m));$('modelList').add(new Option(m,m));}
  $('model').value=selected||'';$('modelList').value=selected||'';$('modelListLabel').hidden=!showList||!models.length;
@@ -74,8 +95,19 @@ function renderRelationship(){
  $('relationshipSummary').textContent=`${r.label}：${r.stage}（好感度 ${r.affinity}）・${r.status} ／ 今の気分：${moods[r.mood]||r.mood}`;
  $('confess').disabled=busy||!r.romanceEnabled;
 }
-function updateBusy(value){busy=value;renderLlamaState();$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear'])$(id).disabled=busy;$('fetchModels').disabled=busy||fetchingModels;$('saveKey').disabled=busy||!keyAvailable;$('deleteKey').disabled=busy||!keySaved;for(const id of ['relationshipProfile','relationshipName','createRelationship','romanceEnabled'])$(id).disabled=busy;$('confess').disabled=busy||!state.relationship?.romanceEnabled;}
+function updateBusy(value){busy=value;renderLlamaState();updateMemoryBusy();$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear'])$(id).disabled=busy;$('fetchModels').disabled=busy||fetchingModels;$('saveKey').disabled=busy||!keyAvailable;$('deleteKey').disabled=busy||!keySaved;for(const id of ['relationshipProfile','relationshipName','createRelationship','romanceEnabled'])$(id).disabled=busy;$('confess').disabled=busy||!state.relationship?.romanceEnabled;}
 async function initControl(){
+ await refreshMemory();
+ $('memoryList').onchange=()=>selectMemory($('memoryList').value);$('newMemory').onclick=()=>selectMemory();
+ $('memoryText').oninput=()=>memoryEditing=true;$('memoryKind').onchange=()=>memoryEditing=true;$('memorySummary').oninput=()=>summaryEditing=true;
+ $('refreshMemory').onclick=wrap(async()=>{if((memoryEditing||summaryEditing)&&!confirm('編集中の記憶を破棄して読み直しますか？'))return;await refreshMemory(true);},'memoryStatus');
+ const editMemory=async(operation,value)=>{if(!memoryData)throw new Error('記憶を読み直してください。');await call(api.editMemory(memoryData.profileId,operation,value));await refreshMemory(true);status('memoryStatus','記憶を保存しました。');};
+ $('saveMemory').onclick=wrap(()=>editMemory('save',{id:$('memoryList').value,text:$('memoryText').value,kind:$('memoryKind').value}),'memoryStatus');
+ $('deleteMemory').onclick=wrap(async()=>{const id=$('memoryList').value;if(!id)throw new Error('削除するメモを選んでください。');if(confirm('この長期メモを削除しますか？'))await editMemory('delete',id);},'memoryStatus');
+ $('saveMemorySummary').onclick=wrap(()=>editMemory('summary',$('memorySummary').value),'memoryStatus');
+ $('clearMemory').onclick=wrap(async()=>{if(confirm('このキャラクターの要約と長期メモを全消去しますか？会話履歴と好感度は残ります。'))await editMemory('clear');},'memoryStatus');
+ $('organizeMemory').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');status('memoryStatus','記憶を整理しています…');await call(api.organizeMemory());await refreshMemory();},'memoryStatus');
+ $('cancelMemory').onclick=wrap(async()=>{await call(api.cancelMemory());status('memoryStatus','記憶の整理を中止しました。');},'memoryStatus');
  for(const [button,field,kind]of [['chooseLlamaExecutable','llamaExecutable','executable'],['chooseLlamaModel','llamaModelPath','model']])$(button).onclick=wrap(async()=>{const file=await call(api.chooseLlamaFile(kind));if(file){$(field).value=file;dirty=true;}},'llamaStatus');
  $('startLlama').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');renderLlamaState({phase:'starting'});try{renderLlamaState(await call(api.startLlama()));}catch(e){renderLlamaState(await call(api.llamaStatus()));throw e;}},'llamaStatus');
  $('stopLlama').onclick=wrap(async()=>renderLlamaState(await call(api.stopLlama())),'llamaStatus');
@@ -95,7 +127,7 @@ async function initControl(){
  fillSettings(state.settings);status('voiceStatus',state.voiceStatus||'');$('chooseSpeaker').onclick=wrap(async()=>{const path=await call(api.chooseSpeaker());if(path)$('speakerPath').textContent=path;},'voiceStatus');$('testVoice').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');await call(api.action('test-voice'));},'voiceStatus');$('stopVoice').onclick=()=>api.action('stop-voice');refreshMotionOptions();$('chooseMotions').onclick=wrap(async()=>{const names=await call(api.chooseMotions());if(names){await refreshMotionOptions();$('motionPath').textContent=state.settings.motionFolder;status('motionStatus',names.length+'件のモーションを登録しました。');}},'motionStatus');$('dataPath').textContent='設定と履歴：'+state.dataPath;
  const tabs=selectControlTab;
  $('chatTab').onclick=()=>tabs('chat');$('settingsTab').onclick=()=>tabs('settings');
- $('settingsForm').oninput=e=>{if(['relationshipProfile','relationshipName','romanceEnabled','expressionName','expressionWeight'].includes(e?.target?.id))return;dirty=true;};
+ $('settingsForm').oninput=e=>{if(['relationshipProfile','relationshipName','romanceEnabled','expressionName','expressionWeight','memoryList','memoryText','memoryKind','memorySummary'].includes(e?.target?.id))return;dirty=true;};
  $('provider').onchange=()=>{invalidateModels();$('endpoint').value={ollama:'http://127.0.0.1:11434',lmstudio:'http://127.0.0.1:1234',llamacpp:'http://127.0.0.1:'+Number($('llamaPort').value),openai:'https://api.openai.com/v1',openrouter:'https://openrouter.ai/api/v1',compatible:''}[$('provider').value];$('apiKey').value='';setModels([],$('provider').value==='openai'?'gpt-6-luna':'');dirty=true;updateProviderUI();};
  $('endpoint').oninput=()=>{invalidateModels();dirty=true;$('apiKey').value='';refreshKeyStatus();};
  $('saveKey').onclick=wrap(async()=>{const key=$('apiKey').value;$('apiKey').value='';await call(api.saveKey(settingsFromForm(),key));await refreshKeyStatus();},'keyStatus');
@@ -120,7 +152,7 @@ async function initControl(){
  })();};
  $('message').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('chatForm').requestSubmit();}};
  $('stop').onclick=wrap(async()=>{await call(api.cancel());});
- $('clear').onclick=wrap(async()=>{if(confirm('このキャラクターとの会話履歴を削除しますか？'))await call(api.clear());});
+ $('clear').onclick=wrap(async()=>{if(confirm('このキャラクターとの会話履歴と要約を削除しますか？長期メモと好感度は残ります。'))await call(api.clear());});
  $('resetPosition').onclick=wrap(async()=>{await call(api.action('reset'));});
  $('resetBubble').onclick=wrap(async()=>{await call(api.action('reset-bubble'));});
  $('quit').onclick=()=>api.action('quit');
@@ -397,7 +429,7 @@ function initCharacterMouse(){
  document.addEventListener('contextmenu',e=>e.preventDefault());
 }
 api.onUpdate(data=>{
- if(!state)return;const before=state.settings;state={...state,...data};
+ if(!state)return;const before=state.settings,beforeRelation=state.relationship?.active;state={...state,...data};
  const rotationChanged=['angleX','angleY','angleZ'].some(k=>before[k]!==state.settings[k]);
  if(isMascot){
   if(data.reply||data.greeting){const mood=data.mood||state.relationship?.mood||'happy';speechFaces.setMood(mood,elapsed);}
@@ -437,6 +469,8 @@ api.onUpdate(data=>{
   if(data.bubbleSide)document.body.dataset.side=data.bubbleSide;
   if(data.speech!==undefined||data.settings)updateSpeech(data.speech);
  }else{
+  if(data.memoryStatus!==undefined)state.memoryStatus=data.memoryStatus;
+  if(data.memoryChanged||data.relationship&&beforeRelation!==state.relationship?.active)refreshMemory().catch(e=>status('memoryStatus',e.message,true));
   if(data.expressionNames)setExpressionOptions(data.expressionNames,state.settings.modelPath);
   if(data.voiceStatus!==undefined)status('voiceStatus',data.voiceStatus);
   if(data.settings){$('speakerPath').textContent=state.settings.speakerPath||'Speaker Embedding未選択';$('vrmPath').textContent=state.settings.modelPath||'VRM未選択：デモ表示';}

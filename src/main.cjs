@@ -8,6 +8,7 @@ const {ApiKeys}=require('./api-keys.cjs');
 const {VoiceLane,checkEmbedding}=require('./tts.cjs');
 const {ReactionCounter}=require('./interaction.cjs');
 const reactions=new ReactionCounter();
+const memory=require('./memory.cjs');
 const {LlamaServer}=require('./llama-server.cjs');
 let llama, llamaQuitPending=false;
 let expressionNames=[];
@@ -24,9 +25,25 @@ const {TouchResponder}=require('./touch-response.cjs');
 const {app,BrowserWindow,ipcMain,dialog,Menu,Tray,nativeImage,globalShortcut,screen,safeStorage}=require('electron');
 const fs=require('node:fs/promises'),path=require('node:path');
 const {mascotBounds,popupBounds,clampPosition,restoreInputBounds,restoreMascotBounds}=require('./layout.cjs');
-const {Store,cleanSettings,listModels,chat,touchReply,isCloud,llmBase,DEFAULTS}=require('./backend.cjs');
+const {Store,cleanSettings,listModels,chat,touchReply,organizeMemory,isCloud,llmBase,DEFAULTS}=require('./backend.cjs');
 let store,keys,control,mascot,input,bubble,tray,active=null,pass=false,hovered=false,drag=null,startupError='',speech='',speechTimer=null,inputSaveTimer=null,voiceId=0,voiceAwaiting=null,voiceStatus='',wheelAnchor=null,displayLayout=null,topmostInterval=null;
-const touchResponses=new TouchResponder({generate:(s,h,r,signal)=>touchReply(s,h,r,signal,{apiKey:credentials(s),relationshipContext:relationship.context(relationship.current(store.data.relationships))}),publish:(text,reaction)=>{speak(text,{touch:true});broadcast({reaction});}});
+const memoryWorker=new memory.MemoryWorker({
+ prepare:force=>{
+  if(!store||active||goodbye||!store.data.settings.memoryEnabled||!force&&!store.data.settings.memoryAuto)return null;
+  if(!force&&(voiceLane.controller||touchResponses.controller)){memoryWorker.schedule();return null;}
+  const profile=relationship.current(store.data.relationships),payload=memory.plan(profile.memory,store.data.history,store.data.settings.historyTurns,force);if(!payload)return null;
+  return {profileId:profile.id,payload,settings:{...store.data.settings},snapshot:JSON.stringify(profile.memory),history:memory.pairs(store.data.history).map(p=>p.id).join(',')};
+ },
+ generate:(job,signal)=>organizeMemory(job.settings,job.payload,signal,{apiKey:credentials(job.settings)}),
+ commit:(job,result)=>{
+  const profile=relationship.current(store.data.relationships);
+  if(active||profile.id!==job.profileId||JSON.stringify(profile.memory)!==job.snapshot||memory.pairs(store.data.history).map(p=>p.id).join(',')!==job.history)return;
+  const previous=structuredClone(store.data);profile.memory=memory.apply(profile.memory,job.payload,result);
+  try{store.save();}catch(e){store.data=previous;throw e;}
+ },onStatus:memoryStatus=>{if(store)broadcast({memoryStatus,memoryChanged:true});}
+});
+function memoryContext(query){return store.data.settings.memoryEnabled?memory.context(relationship.current(store.data.relationships).memory,query):'';}
+const touchResponses=new TouchResponder({generate:(s,h,r,signal)=>touchReply(s,h,r,signal,{apiKey:credentials(s),relationshipContext:relationship.context(relationship.current(store.data.relationships))+'\n'+memoryContext('ふれあいへの反応')}),publish:(text,reaction)=>{speak(text,{touch:true});broadcast({reaction});}});
 const voiceLane=new VoiceLane({publish:audio=>{
  if(audio.id!==voiceId)return;voiceAwaiting=audio.id;clearTimeout(speechTimer);voiceStatus='音声の再生準備中…';broadcast({voiceStatus});
  mascot.webContents.send('update',{voiceAudio:audio});
@@ -36,6 +53,7 @@ function scheduleGoodbyeExit(delay){
  clearTimeout(goodbyeTimer);goodbyeTimer=setTimeout(()=>{goodbyeTimer=null;if(goodbye?.finished)return;if(goodbye)goodbye.finished=true;cancelVoice(false);app.quit();},delay);goodbyeTimer.unref?.();
 }
 function requestQuit(){
+ memoryWorker.cancel();
  if(goodbye)return;
  if(!store||!mascot||mascot.isDestroyed()||!bubble||bubble.isDestroyed()){app.quit();return;}
  goodbye={id:null,finished:false};active?.abort();touchResponses.cancel();drag=null;
@@ -61,7 +79,7 @@ const gotLock=app.requestSingleInstanceLock();if(!gotLock)app.quit();
 function credentials(settings){return settings.provider==='llamacpp'?llama.credentials(settings):isCloud(settings.provider)?keys.get(settings):'';}
 const allWindows=()=>[control,mascot,input,bubble].filter(w=>w&&!w.isDestroyed());
 function result(fn){return async(...args)=>{try{return {ok:true,data:await fn(...args)};}catch(e){return {ok:false,error:e.message};}};}
-function broadcast(extra={}){for(const w of allWindows())w.webContents.send('update',{settings:store.data.settings,history:store.data.history,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,...extra});}
+function broadcast(extra={}){for(const w of allWindows())w.webContents.send('update',{settings:store.data.settings,history:store.data.history,relationship:relationship.view(store.data.relationships),busy:!!active,pass,memoryStatus:memoryWorker.status,mascotVisible:mascot?.isVisible?.()!==false,...extra});}
 function area(){return screen.getDisplayMatching(mascot.getBounds()).workArea;}
 function positionPopups(){
  if(!mascot)return;const r=area(),m=mascot.getBounds();
@@ -120,6 +138,7 @@ function speak(text,{thinking=false,touch=false,voice=true,farewell=false}={}){
  cancelVoice(false);clearTimeout(speechTimer);speech=String(text).slice(0,12000);
  if(farewell)goodbye.id=voiceId;
  const wantsVoice=!!(speech&&!thinking&&voice&&store.data.settings.ttsEnabled),useVoice=wantsVoice&&!!store.data.settings.speakerPath;
+ if(useVoice)memoryWorker.cancel();
  voiceStatus=useVoice?'音声を生成中…':wantsVoice?'このVRMのSpeaker Embeddingは未登録です。文字で表示します。':'';broadcast({speech,thinking,speechId:voiceId,ttsPending:useVoice,voiceStatus});positionPopups();
  if(speech){bubble.showInactive();if(!thinking){if(useVoice)voiceLane.request(voiceId,{...store.data.settings,ttsCaption:[store.data.settings.ttsCaption,relationship.caption(relationship.current(store.data.relationships))].filter(Boolean).join('。')},speech);else armSpeechTimer();}}
  else bubble.hide();
@@ -146,6 +165,7 @@ function menu(){return Menu.buildFromTemplate([
  {type:'separator'},{label:'終了',click:requestQuit}
 ]);}
 async function selectVRM(){
+ memoryWorker.cancel();
  if(goodbye)return null;
  if(active)throw new Error('生成を停止してからVRMを変更してください。');
  const r=await dialog.showOpenDialog(mascot,{title:'VRMを選択',filters:[{name:'VRMモデル',extensions:['vrm']}],properties:['openFile']});
@@ -202,6 +222,7 @@ if(gotLock)app.whenReady().then(async()=>{
 });
 app.on('second-instance',()=>{if(input)showInput();});
 app.on('before-quit',e=>{
+ memoryWorker.cancel();
  if(!app.isQuitting&&!llamaQuitPending&&(llama?.child||llama?.starting||llama?.stopping)){e?.preventDefault();llamaQuitPending=true;active?.abort();touchResponses.cancel();llama.stop().then(()=>app.quit(),error=>{console.error(error.message);app.quit();});return;}
  clearTimeout(goodbyeTimer);goodbyeTimer=null;
  app.isQuitting=true;clearInterval(topmostInterval);topmostInterval=null;cancelVoice(false);touchResponses.cancel();active?.abort();clearTimeout(speechTimer);clearTimeout(inputSaveTimer);inputSaveTimer=null;
@@ -209,8 +230,9 @@ app.on('before-quit',e=>{
 });
 app.on('will-quit',()=>globalShortcut.unregisterAll());app.on('window-all-closed',()=>app.quit());
 function handle(channel,fn,only){ipcMain.handle(channel,result(async(e,...args)=>{if(!allWindows().some(w=>w.webContents===e.sender)||only&&e.sender!==only()?.webContents)throw new Error('不明なウィンドウです。');if(goodbye&&!['state','voice-state','model-status','hit','bubble-size'].includes(channel)&&!(channel==='action'&&['quit','stop-voice','close-bubble'].includes(args[0])))throw new Error('終了の挨拶中です。');return fn(...args);}));}
-handle('state',()=>({...store.data,version:app.getVersion?.()||'',relationships:undefined,voiceBindings:undefined,characterBindings:undefined,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus,llamaState:llama?.status()}));
+handle('state',()=>({...store.data,version:app.getVersion?.()||'',relationships:undefined,voiceBindings:undefined,characterBindings:undefined,relationship:relationship.view(store.data.relationships),busy:!!active,pass,mascotVisible:mascot?.isVisible?.()!==false,startupError,dataPath:store.file,speech,voiceStatus,llamaState:llama?.status(),memoryStatus:memoryWorker.status}));
 handle('save',async settings=>{
+ memoryWorker.cancel();
  if(active)throw new Error('生成を停止してから設定を変更してください。');
  const cleaned=cleanSettings(settings);if(isCloud(cleaned.provider))llmBase(cleaned);
  if(llama?.child||llama?.starting){const runtimeKeys=['provider','llamaExecutable','llamaModelPath','llamaPort','llamaContext','llamaGpuLayers','llamaTemplate'];if(runtimeKeys.some(k=>cleaned[k]!==store.data.settings[k]))await llama.stop();}
@@ -257,6 +279,22 @@ handle('motion-data',name=>motionFiles.readMotion(store.data.settings.motionFold
 handle('key-status',s=>{s=cleanSettings(s);return {saved:isCloud(s.provider)&&keys.has(s),available:keys.available()};},()=>control);
 handle('key-save',(s,key)=>{if(active)throw new Error('生成を停止してからAPIキーを変更してください。');s=cleanSettings(s);touchResponses.cancel();keys.set(s,key);return {saved:true};},()=>control);
 handle('key-delete',s=>{if(active)throw new Error('生成を停止してからAPIキーを変更してください。');s=cleanSettings(s);touchResponses.cancel();keys.delete(s);return {saved:false};},()=>control);
+handle('memory-cancel',()=>{memoryWorker.cancel();broadcast();},()=>control);
+handle('memory-view',()=>({profileId:relationship.current(store.data.relationships).id,...memory.clean(relationship.current(store.data.relationships).memory),status:memoryWorker.status}),()=>control);
+handle('memory-organize',async()=>{if(voiceLane.controller)throw new Error('音声の生成が終わってから記憶を整理してください。');if(active)throw new Error('会話が終わってから整理してください。');if(!store.data.settings.memoryEnabled)throw new Error('記憶を使う設定を有効にして保存してください。');touchResponses.cancel();await memoryWorker.run(true);return memoryWorker.status;},()=>control);
+handle('memory-edit',(profileId,operation,value)=>{
+ if(active)throw new Error('会話が終わってから記憶を変更してください。');
+ const profile=relationship.current(store.data.relationships);if(profile.id!==profileId)throw new Error('キャラクターが切り替わりました。記憶を読み直してください。');
+ memoryWorker.cancel();const previous=structuredClone(store.data);
+ try{
+  if(operation==='save')profile.memory=memory.edit(profile.memory,value?.id,value?.text,value?.kind);
+  else if(operation==='delete')profile.memory=memory.remove(profile.memory,value);
+  else if(operation==='summary'){if(typeof value!=='string'||value.length>600)throw new Error('要約は600文字以内で入力してください。');profile.memory=memory.clean(profile.memory);profile.memory.summary=value.trim();profile.memory.summaryAt=Date.now();}
+  else if(operation==='clear')profile.memory=memory.clearAll(profile.memory,store.data.history);
+  else throw new Error('不明な記憶操作です。');store.save();
+ }catch(e){store.data=previous;throw e;}
+ broadcast({memoryChanged:true});return {profileId:profile.id,...memory.clean(profile.memory)};
+},()=>control);
 handle('llama-status',()=>llama.status(),()=>control);
 handle('choose-llama-file',async kind=>{
  if(!['executable','model'].includes(kind))throw new Error('ファイルの指定が不正です。');
@@ -267,10 +305,11 @@ handle('llama-start',async()=>{
  if(store.data.settings.provider!=='llamacpp')throw new Error('接続方式でllama-serverを選び、設定を保存してください。');
  touchResponses.cancel();return llama.start({...store.data.settings});
 },()=>control);
-handle('llama-stop',async()=>{if(active)throw new Error('生成を停止してからサーバーを停止してください。');touchResponses.cancel();return llama.stop();},()=>control);
+handle('llama-stop',async()=>{memoryWorker.cancel();if(active)throw new Error('生成を停止してからサーバーを停止してください。');touchResponses.cancel();return llama.stop();},()=>control);
 handle('models',s=>{s=cleanSettings(s);return listModels(s,{apiKey:credentials(s)});},()=>control);handle('choose-vrm',selectVRM);
 handle('vrm',async()=>{const p=store.data.settings.modelPath;if(!p)return null;if((await fs.stat(p)).size>300*1024*1024)throw new Error('VRMが300MBを超えています。');return new Uint8Array(await fs.readFile(p));});
 handle('touch',(region,gesture)=>{
+ memoryWorker.cancel();
  if(pass||!store.data.settings.touchEnabled||region==='cloth'&&!store.data.settings.clothDrag||region==='hand'&&!store.data.settings.handDrag)return;
  const reaction=reactions.perform(region,gesture,Date.now());if(!reaction)return;
  if(!active)speak('',{touch:true});
@@ -310,21 +349,23 @@ handle('bubble-size',(height)=>{if(!Number.isFinite(height))return;const r=area(
 handle('model-status',text=>{if(typeof text==='string'&&text)speak(text.slice(0,1000),{voice:false});},()=>mascot);
 async function converse(text,{confess=false}={}){
  if(active)throw new Error('返答を生成中です。');if(typeof text!=='string'||!text.trim()||text.length>8000)throw new Error('メッセージは1〜8000文字で入力してください。');
- const request=new AbortController();active=request;broadcast({mood:'thinking'});speak('うーん、考え中…',{thinking:true});
- const prepared=relationship.prepare(relationship.current(store.data.relationships),text.trim(),{confess});
+ memoryWorker.cancel();const request=new AbortController();active=request;broadcast({mood:'thinking'});speak('うーん、考え中…',{thinking:true});
+ const prepared=relationship.prepare(relationship.current(store.data.relationships),text.trim(),{confess});let completed=false;
  try{
   const fallback={accepted:'私も、あなたのことが好き。これから恋人として、よろしくね。','not-ready':'気持ちは嬉しいよ。もう少しお互いを知ってから、考えさせてね。',wait:'気持ちは受け取っているよ。今は急がず、ゆっくりお話ししよう。',disabled:'大切な友達として、これからもお話ししようね。',already:'うん。これからも、よろしくね。'};
-  const answer=confess&&!store.data.settings.model?fallback[prepared.event]:await chat({...store.data.settings},store.data.history,text.trim(),request.signal,{apiKey:credentials(store.data.settings),systemExtra:relationship.context(prepared.profile,prepared.event)});
+  const answer=confess&&!store.data.settings.model?fallback[prepared.event]:await chat({...store.data.settings},store.data.history,text.trim(),request.signal,{apiKey:credentials(store.data.settings),systemExtra:relationship.context(prepared.profile,prepared.event)+'\n'+memoryContext(text.trim())});
   if(request.signal.aborted)throw new Error('生成を停止しました。');
   const previous=structuredClone(store.data);store.data.history=[...store.data.history,{role:'user',content:text.trim()},{role:'assistant',content:answer}].slice(-200);
+  prepared.profile.memory=memory.rememberTime(prepared.profile.memory,store.data.history);
   store.data.relationships.profiles[store.data.relationships.profiles.findIndex(p=>p.id===prepared.profile.id)]=prepared.profile;
   try{store.save();}catch(e){store.data=previous;throw new Error('会話を保存できませんでした: '+e.message);}
-  const emotion=relationship.mood(prepared.profile);broadcast({reply:answer,mood:emotion,...(['shy','angry','surprised'].includes(emotion)?{reaction:{emotion}}:{})});speak(answer);return answer;
- }catch(e){speak(e.message,{voice:false});throw e;}finally{active=null;broadcast({mood:'idle'});}
+  const emotion=relationship.mood(prepared.profile);broadcast({reply:answer,mood:emotion,...(['shy','angry','surprised'].includes(emotion)?{reaction:{emotion}}:{})});speak(answer);completed=true;return answer;
+ }catch(e){speak(e.message,{voice:false});throw e;}finally{active=null;broadcast({mood:'idle'});if(completed&&store.data.settings.memoryEnabled&&store.data.settings.memoryAuto&&store.data.settings.model)memoryWorker.schedule();}
 }
 handle('chat',text=>converse(text));
 handle('confess',()=>converse('恋人になってください。',{confess:true}));
 handle('relationship',(operation,value)=>{
+ memoryWorker.cancel();
  if(active)throw new Error('生成を停止してから関係の設定を変更してください。');
  const previous=structuredClone(store.data);cancelVoice();touchResponses.cancel();reactions.reset();
  try{
@@ -337,7 +378,11 @@ handle('relationship',(operation,value)=>{
  }catch(e){store.data=previous;throw e;}
  hideSpeech();broadcast();return relationship.view(store.data.relationships);
 },()=>control);
-handle('cancel',()=>{cancelVoice();touchResponses.cancel();active?.abort();});handle('clear',()=>{touchResponses.cancel();if(active)throw new Error('生成を停止してください。');store.data.history=[];store.save();broadcast();});
+handle('cancel',()=>{memoryWorker.cancel();cancelVoice();touchResponses.cancel();active?.abort();});handle('clear',()=>{
+ memoryWorker.cancel();touchResponses.cancel();if(active)throw new Error('生成を停止してください。');const previous=structuredClone(store.data);
+ const profile=relationship.current(store.data.relationships);profile.memory=memory.clearConversation(profile.memory,store.data.history);profile.history=[];store.data.history=[];
+ try{store.save();}catch(e){store.data=previous;throw e;}broadcast({memoryChanged:true});
+});
 handle('action',name=>{
  if(name==='test-voice'){if(!store.data.settings.ttsEnabled)throw new Error('読み上げを有効にして設定を保存してください。');if(!store.data.settings.speakerPath)throw new Error('このVRMのSpeaker Embeddingを選択してください。');speak('こんにちは。これから、この声でお話しするね。');}
  else if(name==='stop-voice'){cancelVoice();armSpeechTimer();if(goodbye)scheduleGoodbyeExit(700);}

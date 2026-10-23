@@ -1,14 +1,15 @@
 'use strict';
 const {randomUUID}=require('node:crypto');
+const memory=require('./memory.cjs');
 const DAY_CAP=12,CHAT_COOLDOWN=60000,STROKE_COOLDOWN=30000,CONFESS_COOLDOWN=86400000;
 const clamp=(v,min,max,fallback=0)=>typeof v==='number'&&Number.isFinite(v)?Math.min(max,Math.max(min,v)):fallback;
 const stamp=v=>clamp(v,0,Number.MAX_SAFE_INTEGER);
-function profile(id,label){return {id,label:String(label||'コンパニオン').slice(0,100),affinity:0,romance:0,lovers:false,romanceEnabled:true,mood:'calm',moodUntil:0,lastChat:0,lastStroke:0,lastPenalty:0,lastConfession:0,day:'',gained:0,romanceGained:0,history:[]};}
+function profile(id,label){return {id,label:String(label||'コンパニオン').slice(0,100),affinity:0,romance:0,lovers:false,romanceEnabled:true,mood:'calm',moodUntil:0,lastChat:0,lastStroke:0,lastPenalty:0,lastConfession:0,day:'',gained:0,romanceGained:0,history:[],memory:memory.clean()};}
 function history(items){const out=[];if(Array.isArray(items))for(let i=0;i+1<items.length;i+=2){const a=items[i],b=items[i+1];if(a?.role==='user'&&b?.role==='assistant'&&typeof a.content==='string'&&typeof b.content==='string')out.push({role:'user',content:a.content.slice(0,8000)},{role:'assistant',content:b.content.slice(0,12000)});}return out.slice(-200);}
 function clean(raw,label='コンパニオン'){
  const profiles=[];if(Array.isArray(raw?.profiles))for(const p of raw.profiles.slice(0,100)){
   if(!p||typeof p.id!=='string'||!p.id||p.id.length>100||profiles.some(x=>x.id===p.id))continue;
-  const next=profile(p.id,p.label);next.affinity=clamp(p.affinity,-100,100);next.romance=clamp(p.romance,0,100);next.lovers=p.lovers===true;next.romanceEnabled=p.romanceEnabled!==false;
+  const next=profile(p.id,p.label);next.memory=memory.clean(p.memory);next.affinity=clamp(p.affinity,-100,100);next.romance=clamp(p.romance,0,100);next.lovers=p.lovers===true;next.romanceEnabled=p.romanceEnabled!==false;
   next.mood=['calm','happy','shy','surprised','angry'].includes(p.mood)?p.mood:'calm';
   for(const key of ['moodUntil','lastChat','lastStroke','lastPenalty','lastConfession'])next[key]=stamp(p[key]);
   next.day=typeof p.day==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(p.day)?p.day:'';next.gained=clamp(p.gained,0,DAY_CAP);next.romanceGained=clamp(p.romanceGained,0,DAY_CAP);next.history=history(p.history);profiles.push(next);
@@ -78,3 +79,4 @@ function greeting(p,now=Date.now()){
 }
 function caption(p,now=Date.now()){return {shy:'少し照れた、やわらかな話し方',happy:'嬉しそうで親しみのある話し方',angry:'不快な気持ちを落ち着いて伝える話し方',surprised:'少し驚いた話し方'}[mood(p,now)]||'';}
 module.exports={clean,current,view,stage,mood,prepare,touch,context,select,create,forModel,caption,greeting,history,DAY_CAP};
+

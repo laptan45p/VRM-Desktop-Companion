@@ -4,6 +4,7 @@ const path = require('node:path');
 const voices=require('./voice-bindings.cjs');
 const characters=require('./character-bindings.cjs');
 const DEFAULTS = {
+  memoryEnabled: true, memoryAuto: true,
   llamaExecutable: '', llamaModelPath: '', llamaPort: 18080, llamaContext: 4096, llamaGpuLayers: 99, llamaTemplate: 'auto', llamaDryMultiplier: .8, llamaDryBase: 1.75, llamaDryAllowedLength: 2,
   cloudMaxTokens: 1024, cloudReasoning: 'auto', cloudTemperature: false, compatibleTokenParam: 'max_tokens', provider: 'ollama', endpoint: 'http://127.0.0.1:11434', model: '',
   name: 'コンパニオン', selfPronoun: '', userAddress: '', persona: 'あなたはデスクトップに住む親しみやすい相棒です。日本語で自然に会話してください。返答は基本的に短く、相手の話をよく聞いてください。',
@@ -32,7 +33,7 @@ function cleanSettings(input = {}) {
   for(const k of ['llamaPort','llamaContext','llamaGpuLayers','llamaDryAllowedLength'])s[k]=Math.round(s[k]);
   if(['auto','mistral-v1','mistral-v3-tekken','chatml','llama3'].includes(input.llamaTemplate))s.llamaTemplate=input.llamaTemplate;
   if(s.provider==='llamacpp'){s.endpoint=require('./llama-server.cjs').endpoint(s);s.model=require('./llama-server.cjs').MODEL;}
-  for(const k of ['topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled'])if(typeof input[k]==='boolean')s[k]=input[k];
+  for(const k of ['memoryEnabled','memoryAuto','topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled'])if(typeof input[k]==='boolean')s[k]=input[k];
   return s;
 }
 function localBase(endpoint) {
@@ -128,6 +129,11 @@ async function touchReply(settings,history,reaction,signal,{apiKey='',relationsh
  const answer=await chat({...settings,historyTurns:Math.min(settings.historyTurns,3)},history,prompt,signal,{maxTokens:isCloud(settings.provider)?Math.min(settings.cloudMaxTokens,1024):128,timeoutMs:15000,systemExtra:systemExtra+"\n"+relationshipContext,apiKey});
  return answer.slice(0,160);
 }
+async function organizeMemory(settings,job,signal,{apiKey=''}={}){
+ const memory=require('./memory.cjs');
+ const answer=await chat({...settings,name:'記憶整理係',persona:memory.instructions,selfPronoun:'',userAddress:'',temperature:.2,historyTurns:1},[],memory.prompt(job),signal,{maxTokens:1024,timeoutMs:60000,apiKey});
+ return memory.parse(answer);
+}
 class Store {
   constructor(dir) { this.file = path.join(dir, 'companion.json'); this.data = {settings:{...DEFAULTS},history:[],characterBindings:[],voiceBindings:[],relationships:require('./relationship.cjs').clean(null,DEFAULTS.name)}; }
   load() {
@@ -149,7 +155,7 @@ class Store {
     const tmp=this.file+'.tmp'; fs.writeFileSync(tmp, JSON.stringify(this.data,null,2),'utf8'); fs.renameSync(tmp,this.file);
   }
 }
-module.exports = {isCloud,llmBase,DEFAULTS, cleanSettings, localBase, requestJSON, listModels, chat, touchReply, Store};
+module.exports = {isCloud,llmBase,DEFAULTS, cleanSettings, localBase, requestJSON, listModels, chat, touchReply, organizeMemory, Store};
 
 
 

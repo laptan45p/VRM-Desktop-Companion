@@ -1,0 +1,48 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+const M=require('../src/memory.cjs'),R=require('../src/relationship.cjs'),{Store,cleanSettings,DEFAULTS,organizeMemory}=require('../src/backend.cjs');
+const history=n=>Array.from({length:n},(_,i)=>[{role:'user',content:'好きな食べ物はカレーです。番号'+i},{role:'assistant',content:'そうなんですね。返事'+i}]).flat();
+test('memory migration and validation keep legacy history and settings; memory is isolated per relationship',()=>{
+ const data=R.clean(),p=R.current(data);p.memory=M.edit(p.memory,'','カレーが好きです','preference',1000);p.affinity=45;const id=R.create(data,'別の子');R.select(data,id,'B.vrm',history(2));assert.equal(R.current(data).memory.items.length,0);R.select(data,p.id,'A.vrm',[]);assert.equal(R.current(data).memory.items[0].text,'カレーが好きです');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'companion-memory-'));try{const s=new Store(dir);s.data.relationships=data;s.data.history=history(2);s.save();const restored=new Store(dir);restored.load();assert.deepEqual(restored.data.relationships,data);assert.equal(R.current(restored.data.relationships).affinity,45);assert.deepEqual(restored.data.history,history(2));assert.equal(cleanSettings({memoryAuto:false,memoryEnabled:false}).memoryEnabled,false);}finally{fs.rmSync(dir,{recursive:true,force:true});}
+ assert.equal(M.clean({items:[null,{text:4}]}).items.length,0);assert.equal(M.clean({summary:'あ'.repeat(1000)}).summary.length,600);
+});
+test('automatic work only runs at thresholds and summarizes turns outside short-term history',()=>{
+ assert.equal(M.plan(null,history(5),12),null);const job=M.plan(null,history(6),12);assert.equal(job.summaryTurns.length,0);assert.equal(job.extractTurns.length,6);
+ const old=M.plan(null,history(10),6);assert.equal(old.summaryTurns.length,4);assert.equal(old.summaryTurns.at(-1).user,history(10)[6].content);assert.ok(!old.summaryTurns.some(t=>t.user===history(10).at(-2).content));
+ assert.equal(M.plan(null,[],6,true),null);
+});
+test('automatic facts must quote a real user source; assistant statements, unknown IDs and invented text are discarded',()=>{
+ const job=M.plan(null,history(6),12),source=job.extractTurns[0];const m=M.apply(null,job,{summary:'must not be used',facts:[{sourceId:source.id,quote:'好きな食べ物はカレーです。',kind:'preference'},{sourceId:source.id,quote:source.assistant,kind:'profile'},{sourceId:'made-up',quote:source.user,kind:'profile'},{sourceId:source.id,quote:'ピザが大好きです',kind:'preference'}]},1234);
+ assert.equal(m.items.length,1);assert.equal(m.summary,'');assert.equal(m.items[0].source.type,'user');assert.equal(m.items[0].source.at,0);assert.equal(m.items[0].source.quote,'好きな食べ物はカレーです。');assert.equal(m.extracted.length,6);
+ const dated=M.rememberTime(null,history(1),1000),next=M.plan(dated,history(1),6,true);assert.equal(next.extractTurns[0].at,1000);
+});
+test('summary, processed cursors and source information survive repeated organization without duplication',()=>{
+ const job=M.plan(null,history(10),6),m=M.apply(null,job,{summary:'食べ物の好みについて話した。',facts:[]},1000);assert.equal(m.summaryAt,1000);assert.equal(m.summarized.length,4);assert.equal(M.plan(m,history(10),6,true).summaryTurns.length,0);assert.throws(()=>M.apply(null,job,{summary:'',facts:[]}),/空/);
+ const repeated=M.apply(m,job,{summary:'食べ物の好みについて話した。',facts:[{sourceId:job.extractTurns[0].id,quote:'好きな食べ物はカレーです。',kind:'preference'}]});const again=M.apply(repeated,job,{summary:repeated.summary,facts:[{sourceId:job.extractTurns[0].id,quote:'好きな食べ物はカレーです。',kind:'preference'}]});assert.equal(again.items.length,1);
+});
+test('manual edits are attributable and deleted automatic notes cannot be resurrected by the same source',()=>{
+ const job=M.plan(null,history(1),6,true),result={summary:'',facts:[{sourceId:job.extractTurns[0].id,quote:'好きな食べ物はカレーです。',kind:'preference'}]},m=M.apply(null,job,result);
+ const changed=M.edit(m,m.items[0].id,'いまはラーメンが好き','preference');assert.equal(changed.items[0].source.type,'manual');assert.equal(M.apply(changed,job,result).items.length,1);
+ const removed=M.remove(m,m.items[0].id);assert.equal(M.apply(removed,job,result).items.length,0);assert.throws(()=>M.remove(m,'missing'),/見つかり/);assert.throws(()=>M.edit(m,'','好きな食べ物はカレーです。'),/既に/);
+});
+test('clearing conversation removes summary but keeps notes; clearing memory prevents reimport from retained logs',()=>{
+ const h=history(6),job=M.plan(null,h,2),m=M.apply(null,job,{summary:'カレーの話',facts:[{sourceId:job.extractTurns[0].id,quote:'好きな食べ物はカレーです。',kind:'preference'}]});
+ const cleared=M.clearConversation(m,h);assert.equal(cleared.summary,'');assert.equal(cleared.items.length,1);const all=M.clearAll(m,h);assert.equal(all.items.length,0);assert.equal(M.plan(all,h,2,true),null);assert.equal(M.apply(all,{...job,summaryTurns:[]},{summary:'',facts:[{sourceId:job.extractTurns[0].id,quote:'好きな食べ物はカレーです。',kind:'preference'}]}).items.length,0);
+});
+test('Japanese retrieval selects related memories within a bounded context and preserves complete note text',()=>{
+ let m=M.edit(null,'','好きな食べ物はカレーです','preference',100);m=M.edit(m,'','誕生日は5月10日です','profile',200);m.summary='以前、食べ物の話をしました。';
+ assert.ok(M.recall(m,'好きな食べ物は覚えている？').some(i=>i.text.includes('カレー')));assert.equal(M.recall(m,'VRMの描画設定について').length,0); // An unrelated query must not import all facts.
+});
+test('memory JSON parsing rejects malformed output and input size stays bounded for long conversations',()=>{
+ assert.deepEqual(M.parse('```json\n{"summary":"","facts":[]}\n```'),{summary:'',facts:[]});for(const answer of ['not json','{}','{"summary":"x","facts":{}}'])assert.throws(()=>M.parse(answer));
+ const h=history(20).map(m=>({...m,content:m.content+'あ'.repeat(10000)})),job=M.plan(null,h,6,true);assert.ok(M.prompt(job).length<=2800);assert.ok(JSON.parse(M.prompt(job)).userSources.every(s=>s.sourceId.length===64));
+});
+test('worker debounce, cancellation and stale completions never commit to another conversation',async()=>{
+ let done,commits=0,timer,cleared=0;const worker=new M.MemoryWorker({prepare:()=>({id:1}),generate:()=>new Promise(r=>done=r),commit:()=>commits++,setTimer:fn=>(timer={fn,unref(){}}),clearTimer:()=>cleared++});
+ worker.schedule();worker.schedule();assert.equal(cleared,1);const pending=worker.run(true);worker.cancel();done({summary:'',facts:[]});await pending;assert.equal(commits,0);assert.equal(worker.status,'');
+ worker.generate=async()=>({});await worker.run(true);assert.equal(commits,1);worker.generate=async()=>{throw new Error('bad JSON');};await assert.rejects(worker.run(true),/bad JSON/);assert.equal(commits,1);
+});
+test('memory extraction uses the selected provider, bounded independent instructions and no character or assistant facts',async()=>{
+ const old=global.fetch;let body;global.fetch=async(_url,o)=>{body=JSON.parse(o.body);return new Response(JSON.stringify({message:{content:'{"summary":"","facts":[]}'}}),{headers:{'Content-Type':'application/json'}});};
+ try{const s={...DEFAULTS,model:'test',persona:'秘密の性格設定',name:'キャラ名',selfPronoun:'あたし'};await organizeMemory(s,M.plan(null,history(1),6,true));assert.equal(body.options.num_predict,1024);assert.equal(body.options.temperature,.2);assert.ok(!body.messages[0].content.includes('秘密の性格設定'));assert.ok(!body.messages[0].content.includes('あたし'));const input=JSON.parse(body.messages[1].content);assert.equal(input.userSources.length,1);assert.equal(input.olderConversation.length,0);assert.equal(input.userSources[0].text,history(1)[0].content);}finally{global.fetch=old;}
+});
