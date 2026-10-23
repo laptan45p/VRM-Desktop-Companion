@@ -4,7 +4,7 @@ const {cleanSettings,chat,listModels,Store}=require('../src/backend.cjs');
 function fixture(extra={}){
  let child,spawned=0,args,options;
  const states=[],manager=new LlamaServer({defaultExecutable:'/bin/llama-server',validate:async()=>{},checkPort:async()=>{},wait:()=>new Promise(r=>setImmediate(r)),startupTimeout:1000,
- spawnProcess:(exe,a,o)=>{spawned++;args=a;options=o;child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{setImmediate(()=>child.emit('close',0));return true;};return child;},fetchJSON:async()=>({data:[{id:MODEL}]}),onState:s=>states.push(s),...extra});
+ spawnProcess:(exe,a,o)=>{spawned++;args=a;options=o;child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{setImmediate(()=>child.emit('close',0));return true;};return child;},fetchJSON:async(url,key,signal,body)=>url.endsWith('/apply-template')?{prompt:body.messages.map(m=>m.content).join(' ')}:{data:[{id:MODEL}]},onState:s=>states.push(s),...extra});
  return {manager,states,get child(){return child;},get spawned(){return spawned;},get args(){return args;},get options(){return options;}};
 }
 test('managed llama validates configuration and persists it without affecting other providers',async()=>{
@@ -15,7 +15,7 @@ test('managed llama validates configuration and persists it without affecting ot
 });
 test('launch owns a loopback authenticated process, handles spaces, prevents duplicate starts and redacts logs',async()=>{
  const f=fixture(),s=cleanSettings({provider:'llamacpp',llamaModelPath:'/my models/Qwen.gguf',llamaTemplate:'mistral-v1'}),a=f.manager.start(s),b=f.manager.start(s);assert.equal(a,b);await a;
- assert.equal(f.spawned,1);assert.equal(f.options.shell,false);assert.equal(f.options.windowsHide,true);assert.equal(f.args[f.args.indexOf('--host')+1],'127.0.0.1');assert.equal(f.args[f.args.indexOf('--model')+1],s.llamaModelPath);assert.equal(f.args[f.args.indexOf('--parallel')+1],'1');assert.ok(f.args.includes('--dry-multiplier'));assert.ok(f.args.includes('mistral-v1'));
+ assert.equal(f.spawned,1);assert.equal(f.options.shell,false);assert.equal(f.options.windowsHide,true);assert.equal(f.args[f.args.indexOf('--host')+1],'127.0.0.1');assert.equal(f.args[f.args.indexOf('--model')+1],s.llamaModelPath);assert.equal(f.args[f.args.indexOf('--parallel')+1],'1');assert.ok(f.args.includes('--dry-multiplier'));assert.ok(f.args.includes('mistral-v1'));assert.ok(f.args.includes('--no-jinja'));
  const key=f.manager.credentials(s);assert.equal(key.length,64);f.child.stderr.emit('data','key='+key);assert.ok(!f.manager.status().log.includes(key));assert.ok(!JSON.stringify(f.manager.status()).includes(key));
  await assert.rejects(f.manager.start(s),/停止/);await f.manager.stop();assert.equal(f.manager.status().phase,'stopped');assert.throws(()=>f.manager.credentials(s),/起動/);await f.manager.stop();await f.manager.start(s);assert.equal(f.spawned,2);await f.manager.stop();
 });
@@ -40,9 +40,9 @@ test('real managed child accepts authenticated discovery and chat with DRY; norm
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'llama-process-'));let manager;
  try{
  const probe=http.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));
- const script=path.join(dir,'mock-server.cjs');await fs.writeFile(script,`const http=require('node:http');const args=process.argv.slice(2),get=k=>args[args.indexOf(k)+1],key=get('--api-key');if(Number(get('--dry-penalty-last-n'))<0){console.error('invalid dry-penalty-last-n');process.exit(2);}http.createServer(async(req,res)=>{res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='Bearer '+key){res.writeHead(401);res.end('{}');return;}if(req.url==='/v1/models'){res.end(JSON.stringify({data:[{id:'companion-gguf'}]}));return;}let raw='';for await(const chunk of req)raw+=chunk;if(JSON.parse(raw).dry_penalty_last_n<0){res.writeHead(400);res.end(JSON.stringify({error:{message:'invalid dry_penalty_last_n'}}));return;}res.end(JSON.stringify({choices:[{message:{content:raw}}]}));}).listen(Number(get('--port')),'127.0.0.1');`);
+ const script=path.join(dir,'mock-server.cjs');await fs.writeFile(script,`const http=require('node:http');const args=process.argv.slice(2),get=k=>args[args.indexOf(k)+1],key=get('--api-key');if(Number(get('--dry-penalty-last-n'))<0){console.error('invalid dry-penalty-last-n');process.exit(2);}http.createServer(async(req,res)=>{res.setHeader('Content-Type','application/json');if(req.headers.authorization!=='Bearer '+key){res.writeHead(401);res.end('{}');return;}if(req.url==='/v1/models'){res.end(JSON.stringify({data:[{id:'companion-gguf'}]}));return;}let raw='';for await(const chunk of req)raw+=chunk;if(req.url==='/apply-template'){res.end(JSON.stringify({prompt:args.includes('--chat-template')&&!args.includes('--no-jinja')?get('--chat-template'):JSON.parse(raw).messages.map(m=>m.content).join(' ')}));return;}if(JSON.parse(raw).dry_penalty_last_n<0){res.writeHead(400);res.end(JSON.stringify({error:{message:'invalid dry_penalty_last_n'}}));return;}res.end(JSON.stringify({choices:[{message:{content:raw}}]}));}).listen(Number(get('--port')),'127.0.0.1');`);
  manager=new LlamaServer({defaultExecutable:process.execPath,validate:async()=>{},spawnProcess:(_exe,args,options)=>require('node:child_process').spawn(process.execPath,[script,...args],options),startupTimeout:10000});
- const s=cleanSettings({provider:'llamacpp',llamaPort:port,llamaModelPath:'/models/Qwen3.gguf'});await manager.start(s);const apiKey=manager.credentials(s);assert.deepEqual(await listModels(s,{apiKey}),[MODEL]);
+ const s=cleanSettings({provider:'llamacpp',llamaPort:port,llamaModelPath:'/models/NemoMix-Unleashed-12B-Q4_K_M.gguf'});await manager.start(s);const apiKey=manager.credentials(s);assert.deepEqual(await listModels(s,{apiKey}),[MODEL]);
  const body=JSON.parse(await chat(s,[],'こんにちは',null,{apiKey}));assert.equal(body.dry_multiplier,.8);assert.equal(body.dry_base,1.75);assert.equal(body.dry_allowed_length,2);assert.equal(body.dry_penalty_last_n,s.llamaContext);assert.equal(body.repeat_penalty,1);assert.equal(body.chat_template_kwargs.enable_thinking,false);assert.equal(body.messages.at(-1).content,'こんにちは');assert.equal(body.stream,false);
  await manager.stop();assert.equal(manager.child,null);
  }finally{await manager?.stop();await fs.rm(dir,{recursive:true,force:true});}
@@ -63,4 +63,35 @@ test('DRY uses a positive configured context window accepted by the bundled llam
   assert.ok(Number.isSafeInteger(value)&&value>0,'llama.cpp b11829 rejects negative DRY windows');
   assert.equal(value,Number(args[args.indexOf('--ctx-size')+1]),'DRY covers the configured context');
  }
+});
+
+test('known NemoMix filenames automatically select their chat format while explicit choices and other models are preserved',async()=>{
+ const {resolveChatTemplate}=require('../src/llama-config.cjs');
+ for(const file of ['/models/NemoMix-Unleashed-12B-Q4_K_M.gguf','C:\\モデル\\NemoMix-Unleashed-12B-Q8_0.gguf','/models/nemomix-unleashed-12b.gguf','/models/NEMOMIX-UNLEASHED-12B-Q5_K_M.GGUF']){
+  const s=cleanSettings({provider:'llamacpp',llamaModelPath:file,llamaTemplate:'auto'}),config=resolveChatTemplate(s),args=launchArgs(s,'test-key');
+  assert.equal(config.template,'mistral-v1');assert.equal(config.mode,'known-model');assert.ok(args.includes('--no-jinja'));assert.equal(args[args.indexOf('--chat-template')+1],'mistral-v1');assert.equal(s.llamaTemplate,'auto','Automatic resolution must not overwrite the saved user choice');
+ }
+ for(const file of ['/models/Qwen3-8B-Q4_K_M.gguf','/NemoMix-Unleashed-12B-folder/Qwen.gguf','/models/NotNemoMix-Unleashed-12B.gguf','/models/NemoMix-Unleashed-8B.gguf']){
+  const s=cleanSettings({provider:'llamacpp',llamaModelPath:file}),config=resolveChatTemplate(s);assert.equal(config.template,null);assert.ok(!launchArgs(s,'test-key').includes('--chat-template'));assert.ok(!launchArgs(s,'test-key').includes('--no-jinja'));assert.match(config.help,/会話テンプレート/);
+ }
+ const s=cleanSettings({provider:'llamacpp',llamaModelPath:'/models/NemoMix-Unleashed-12B-Q4_K_M.gguf',llamaTemplate:'chatml'}),args=launchArgs(s,'test-key');assert.equal(resolveChatTemplate(s).mode,'manual');assert.equal(args[args.indexOf('--chat-template')+1],'chatml');
+ const f=fixture();await f.manager.start({...s,llamaTemplate:'auto'});assert.equal(f.manager.status().template.template,'mistral-v1');assert.equal(f.manager.status().template.mode,'known-model');assert.equal(f.args[f.args.indexOf('--chat-template')+1],'mistral-v1');await f.manager.stop();
+});
+
+
+test('constant Jinja output is rejected at startup before a model is exposed as ready',async()=>{
+ const s=cleanSettings({provider:'llamacpp',llamaModelPath:'/models/NemoMix-Unleashed-12B-Q4_K_M.gguf'});
+ for(const literal of ['mistral-v1','mistral-v3-tekken','{{ .Prompt }}']){
+  const f=fixture({fetchJSON:async url=>url.endsWith('/apply-template')?{prompt:literal}:{data:[{id:MODEL}]}});
+  await assert.rejects(f.manager.start(s),/会話形式.*正しく含まれていません/);assert.equal(f.manager.phase,'error');assert.equal(f.manager.child,null);assert.equal(f.manager.status().templateVerified,false);assert.ok(f.manager.status().log.includes(literal));assert.throws(()=>f.manager.credentials(s));
+ }
+ const f=fixture();await f.manager.start(s);assert.equal(f.manager.status().templateVerified,true);assert.ok(f.args.includes('--no-jinja'));await f.manager.stop();
+});
+test('format verification rejects dropped system or history messages and respects cancellation',async()=>{
+ const s=cleanSettings({provider:'llamacpp'});
+ for(const indexes of [[1,2,3],[0,3],[3,2,1,0]]){
+  const f=fixture({fetchJSON:async(url,key,signal,body)=>url.endsWith('/apply-template')?{prompt:indexes.map(i=>body.messages[i].content).join(' ')}:{data:[{id:MODEL}]}});
+  await assert.rejects(f.manager.start(s),/会話形式/);assert.equal(f.manager.child,null);
+ }
+ let finish;const f=fixture({fetchJSON:async(url,key,signal,body)=>url.endsWith('/apply-template')?new Promise(resolve=>finish=()=>resolve({prompt:body.messages.map(m=>m.content).join(' ')})):{data:[{id:MODEL}]}}),pending=f.manager.start(s),rejected=assert.rejects(pending,/中止/);await new Promise(r=>setImmediate(r));const stop=f.manager.stop();finish();await Promise.all([rejected,stop]);assert.equal(f.manager.phase,'stopped');assert.equal(f.manager.child,null);
 });

@@ -1,3 +1,4 @@
+import llamaConfig from './llama-config.cjs';
 import unlit from './unlit-materials.cjs';
 import renderQuality from './render-quality.cjs';
 import * as THREE from 'three';
@@ -39,13 +40,18 @@ async function refreshKeyStatus(){
  catch(e){if(serial===keyRequest)status('keyStatus',e.message,true);}
 }
 function modelListButtonText(){return cloudProvider($('provider').value)?'モデル一覧を取得':'導入済みモデル一覧を取得';}
-function updateProviderUI(){const provider=$('provider').value,cloud=cloudProvider(provider);$('cloudSettings').hidden=!cloud;$('llamaSettings').hidden=provider!=='llamacpp';$('model').readOnly=provider==='llamacpp';if(provider==='llamacpp'){$('endpoint').value='http://127.0.0.1:'+Number($('llamaPort').value);$('model').value='companion-gguf';}$('endpoint').readOnly=provider==='openai'||provider==='openrouter'||provider==='llamacpp';$('openrouterHelp').hidden=provider!=='openrouter';$('model').placeholder=provider==='openrouter'?'例：anthropic/claude-haiku-5.5':'モデルIDを選択・直接入力';$('tokenParamLabel').hidden=provider!=='compatible';$('connectionBadge').textContent=cloud?'クラウドLLM':'ローカル接続';if(!fetchingModels)$('fetchModels').textContent=modelListButtonText();$('localModelHelp').hidden=cloud||provider==='llamacpp';if(cloud)refreshKeyStatus();else{keyRequest++;$('apiKey').value='';}}
+function updateProviderUI(){renderLlamaTemplate();const provider=$('provider').value,cloud=cloudProvider(provider);$('cloudSettings').hidden=!cloud;$('llamaSettings').hidden=provider!=='llamacpp';$('model').readOnly=provider==='llamacpp';if(provider==='llamacpp'){$('endpoint').value='http://127.0.0.1:'+Number($('llamaPort').value);$('model').value='companion-gguf';}$('endpoint').readOnly=provider==='openai'||provider==='openrouter'||provider==='llamacpp';$('openrouterHelp').hidden=provider!=='openrouter';$('model').placeholder=provider==='openrouter'?'例：anthropic/claude-haiku-5.5':'モデルIDを選択・直接入力';$('tokenParamLabel').hidden=provider!=='compatible';$('connectionBadge').textContent=cloud?'クラウドLLM':'ローカル接続';if(!fetchingModels)$('fetchModels').textContent=modelListButtonText();$('localModelHelp').hidden=cloud||provider==='llamacpp';if(cloud)refreshKeyStatus();else{keyRequest++;$('apiKey').value='';}}
+function renderLlamaTemplate(){
+ const config=llamaConfig.resolveChatTemplate({llamaModelPath:$('llamaModelPath').value,llamaTemplate:$('llamaTemplate').value});
+ $('llamaTemplateInfo').textContent='会話形式：'+config.label;$('llamaTemplateHelp').textContent=config.help;
+}
 function renderLlamaState(value=state.llamaState||{phase:'stopped'}){
  state.llamaState=value;const phase=value.phase;
  $('llamaProgress').hidden=phase!=='starting';
  $('startLlama').disabled=busy||['starting','running','stopping'].includes(phase);
  $('stopLlama').disabled=busy||!['starting','running','error'].includes(phase);
- status('llamaStatus',value.error||({stopped:'停止中',starting:'GGUFモデルを読み込み中…',running:'起動済み：会話できます。',stopping:'停止しています…',error:'起動できませんでした。ログを確認してください。'}[phase]||phase),phase==='error');
+ const applied=phase==='running'&&value.template?'\n適用中：'+value.template.label+(value.templateVerified?'（会話形式の検証済み）':''):'';
+ status('llamaStatus',value.error||({stopped:'停止中',starting:'GGUFモデルを読み込み中…',running:'起動済み：会話できます。',stopping:'停止しています…',error:'起動できませんでした。ログを確認してください。'}[phase]||phase)+applied,phase==='error');
  $('llamaLog').value=value.log||'';
 }
 let memoryData=null,memoryRequest=0,memoryEditing=false,summaryEditing=false;
@@ -108,10 +114,12 @@ async function initControl(){
  $('clearMemory').onclick=wrap(async()=>{if(confirm('このキャラクターの要約と長期メモを全消去しますか？会話履歴と好感度は残ります。'))await editMemory('clear');},'memoryStatus');
  $('organizeMemory').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');status('memoryStatus','記憶を整理しています…');await call(api.organizeMemory());await refreshMemory();},'memoryStatus');
  $('cancelMemory').onclick=wrap(async()=>{await call(api.cancelMemory());status('memoryStatus','記憶の整理を中止しました。');},'memoryStatus');
- for(const [button,field,kind]of [['chooseLlamaExecutable','llamaExecutable','executable'],['chooseLlamaModel','llamaModelPath','model']])$(button).onclick=wrap(async()=>{const file=await call(api.chooseLlamaFile(kind));if(file){$(field).value=file;dirty=true;}},'llamaStatus');
+ for(const [button,field,kind]of [['chooseLlamaExecutable','llamaExecutable','executable'],['chooseLlamaModel','llamaModelPath','model']])$(button).onclick=wrap(async()=>{const file=await call(api.chooseLlamaFile(kind));if(file){$(field).value=file;dirty=true;renderLlamaTemplate();}},'llamaStatus');
  $('startLlama').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');renderLlamaState({phase:'starting'});try{renderLlamaState(await call(api.startLlama()));}catch(e){renderLlamaState(await call(api.llamaStatus()));throw e;}},'llamaStatus');
  $('stopLlama').onclick=wrap(async()=>renderLlamaState(await call(api.stopLlama())),'llamaStatus');
  $('refreshLlama').onclick=wrap(async()=>renderLlamaState(await call(api.llamaStatus())),'llamaStatus');
+ for(const id of ['llamaModelPath','llamaTemplate'])$(id).onchange=()=>{dirty=true;renderLlamaTemplate();};
+ $('llamaModelPath').oninput=()=>{dirty=true;renderLlamaTemplate();};
  $('llamaPort').oninput=()=>{if($('provider').value==='llamacpp')updateProviderUI();};
  refreshExpressionOptions();
  $('previewExpression').onclick=wrap(previewExpression,'expressionStatus');

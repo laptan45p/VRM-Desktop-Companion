@@ -18,7 +18,7 @@ async function boot(view,withModel=false,audioFixture=null,modelFixture=null){
  const code=fs.readFileSync(path.join(__dirname,'../src/renderer.js'),'utf8').split('\n').filter(l=>!l.startsWith('import ')).join('\n');
  const OriginalPoke=context.window.companionMotion.ChestPoke;
  context.window.companionMotion={...context.window.companionMotion,ChestPoke:class extends OriginalPoke{poke(hit,direction){calls.push(['chestPoke']);return super.poke(hit,direction);}reset(){calls.push(['chestReset']);super.reset();}}};
- context.renderQuality=require('../src/render-quality.cjs');context.unlit=require('../src/unlit-materials.cjs');
+ context.llamaConfig=require('../src/llama-config.cjs');context.renderQuality=require('../src/render-quality.cjs');context.unlit=require('../src/unlit-materials.cjs');
  vm.runInNewContext(code,context);await new Promise(r=>setImmediate(r));
  return {node,calls,notify,listeners,events,rendered,faceControllers,tick:()=>frame?.(),advance:()=>now+=200,setFailure:v=>failSend=v};
 }
@@ -334,4 +334,14 @@ test('memory controls exist in shipped HTML and save separately from global sett
  node('memoryText').value='カレーが好き';node('memoryKind').value='preference';node('memoryText').oninput();node('settingsForm').oninput({target:{id:'memoryText'}});await node('saveMemory').onclick();const save=calls.find(c=>c[0]==='editMemory');assert.equal(save[1],'default');assert.equal(save[2],'save');assert.equal(save[3].text,'カレーが好き');
  await node('organizeMemory').onclick();assert.ok(calls.some(c=>c[0]==='organizeMemory'));notify({memoryStatus:'記憶を整理しています…'});assert.equal(node('organizeMemory').disabled,true);assert.equal(node('cancelMemory').disabled,false);await node('cancelMemory').onclick();assert.ok(calls.some(c=>c[0]==='cancelMemory'));
  node('memoryEnabled').checked=false;await node('settingsForm').onsubmit({preventDefault(){}});assert.equal(calls.findLast(c=>c[0]==='save')[1].memoryEnabled,false);
+});
+
+test('model selection previews automatic NemoMix format, preserves manual choices and shows the actual running format',async()=>{
+ const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');for(const id of ['llamaTemplateInfo','llamaTemplateHelp'])assert.ok(html.includes('id="'+id+'"'));
+ const {node,notify,calls}=await boot('control');node('provider').value='llamacpp';node('provider').onchange();
+ node('llamaModelPath').value='C:\\models\\NemoMix-Unleashed-12B-Q4_K_M.gguf';node('llamaTemplate').value='auto';node('llamaModelPath').oninput();assert.match(node('llamaTemplateInfo').textContent,/NemoMix.*自動適用/);
+ await node('settingsForm').onsubmit({preventDefault(){}});assert.equal(calls.findLast(c=>c[0]==='save')[1].llamaTemplate,'auto');
+ const template=require('../src/llama-config.cjs').resolveChatTemplate({llamaModelPath:'NemoMix-Unleashed-12B-Q4_K_M.gguf',llamaTemplate:'auto'});notify({llamaState:{phase:'running',template}});assert.match(node('llamaStatus').textContent,/適用中：NemoMix/);
+ node('llamaModelPath').value='Qwen3-8B.gguf';node('llamaModelPath').oninput();assert.match(node('llamaTemplateInfo').textContent,/GGUFに保存/);assert.match(node('llamaTemplateHelp').textContent,/会話テンプレート/);assert.match(node('llamaStatus').textContent,/適用中：NemoMix/,'An unsaved draft must not change the running server description');
+ node('llamaModelPath').value='NemoMix-Unleashed-12B-Q4_K_M.gguf';node('llamaTemplate').value='chatml';node('llamaTemplate').onchange();assert.match(node('llamaTemplateInfo').textContent,/手動指定：chatml/);
 });

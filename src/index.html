@@ -11,13 +11,14 @@
    <p class="path">初回は同梱のinstall_llama_server.batでサーバーを導入し、会話用GGUFモデルを選んでください。設定を保存してから起動します。</p>
    <div class="inline"><label>llama-server.exe<input id="llamaExecutable" placeholder="空欄：同梱BATで導入した場所を使用" spellcheck="false"></label><button id="chooseLlamaExecutable" type="button">実行ファイルを選ぶ</button></div>
    <div class="inline"><label>GGUFモデル<input id="llamaModelPath" spellcheck="false" placeholder="ダウンロード済みの.gguf"></label><button id="chooseLlamaModel" type="button">GGUFを選ぶ</button></div>
+   <p id="llamaTemplateInfo" class="path" role="status"></p><p id="llamaTemplateHelp" class="path"></p>
    <label>DRYの強さ（0で無効）<input id="llamaDryMultiplier" type="number" min="0" max="3" step="0.1"></label>
    <p class="path">初期値0.8。同じ文章の繰り返しを抑えます。強すぎると不自然になるため、少しずつ調整してください。</p>
    <details><summary>llama-serverの詳細設定</summary>
     <label>ポート<input id="llamaPort" type="number" min="1024" max="65535" step="1"></label>
     <label>コンテキスト長<input id="llamaContext" type="number" min="512" max="32768" step="512"></label>
     <label>GPUに載せるレイヤー数（0：CPUのみ）<input id="llamaGpuLayers" type="number" min="0" max="999" step="1"></label>
-    <label>会話テンプレート<select id="llamaTemplate"><option value="auto">自動（GGUFの設定）</option><option value="mistral-v1">Mistral v1（NemoMix用の候補）</option><option value="mistral-v3-tekken">Mistral v3 Tekken</option><option value="chatml">ChatML</option><option value="llama3">Llama 3</option></select></label>
+    <label>会話テンプレート<select id="llamaTemplate"><option value="auto">自動（既知モデルを補正／その他はGGUFの設定）</option><option value="mistral-v1">Mistral v1</option><option value="mistral-v3-tekken">Mistral v3 Tekken</option><option value="chatml">ChatML</option><option value="llama3">Llama 3</option></select></label>
     <label>DRYの増加率<input id="llamaDryBase" type="number" min="1.01" max="3" step="0.01"></label>
     <label>DRYで許容する繰り返しの長さ（トークン）<input id="llamaDryAllowedLength" type="number" min="1" max="20" step="1"></label>
     <p class="path">初期値はコンテキスト4096・GPUレイヤー99（モデルの層数まで）です。メモリが厳しい場合はコンテキスト長やGPUレイヤー数を減らしてください。モデル・ポート・テンプレートなどを変更して保存するとサーバーは停止します。</p>
