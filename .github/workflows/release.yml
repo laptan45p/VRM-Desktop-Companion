@@ -7,7 +7,7 @@ permissions:
   contents: write
 concurrency:
   group: windows-release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   release:
     runs-on: windows-latest
@@ -39,6 +39,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          $current = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/heads/$env:GITHUB_REF_NAME" --jq '.object.sha'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not verify release branch head' }
+          if ($current.Trim() -ne $env:GITHUB_SHA) { Write-Host 'A newer release commit superseded this run.'; exit 0 }
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $tag = "v$version"
           $existing = gh release view $tag --json isDraft 2>$null

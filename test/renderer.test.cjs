@@ -319,3 +319,10 @@ test('managed llama controls preserve settings, select files, show loading and s
  await node('stopLlama').onclick();assert.equal(node('startLlama').disabled,false);assert.equal(node('llamaProgress').hidden,true);
  node('provider').value='ollama';node('provider').onchange();assert.equal(node('llamaSettings').hidden,true);assert.equal(node('model').readOnly,false);
 });
+
+
+test('managed llama controls exist in the shipped HTML document',()=>{
+ const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');
+ for(const id of ['llamaSettings','llamaExecutable','llamaModelPath','llamaPort','llamaContext','llamaGpuLayers','llamaTemplate','llamaDryMultiplier','llamaDryBase','llamaDryAllowedLength','chooseLlamaExecutable','chooseLlamaModel','startLlama','stopLlama','refreshLlama','llamaProgress','llamaStatus','llamaLog'])assert.ok(html.includes('id="'+id+'"'),id+' must be present in the packaged document');
+ assert.ok(html.includes('value="llamacpp"'));
+});
