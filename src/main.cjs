@@ -392,6 +392,7 @@ handle('relationship',(operation,value)=>{
   else if(operation==='rename')relationship.rename(data,data.active,value);
   else if(operation==='archive')relationship.archive(data,value,true);
   else if(operation==='restore')relationship.archive(data,value,false);
+  else if(operation==='delete')relationship.remove(data,value);
   else if(operation==='merge'){if(!value||value.targetId!==data.active)throw new Error('統合先を選び直してください。');store.data.history=relationship.merge(data,value.sourceId,value.targetId,store.data.history);}
   else if(operation==='romance'){if(typeof value!=='boolean')throw new Error('設定値が不正です。');relationship.current(data).romanceEnabled=value;}
   else throw new Error('不明な関係操作です。');

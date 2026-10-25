@@ -112,7 +112,7 @@ function renderRelationship(){
  $('relationshipSummary').textContent=`${r.label}：${r.stage}（好感度 ${r.affinity}）・${r.status} ／ 今の気分：${moods[r.mood]||r.mood}`;
  $('confess').disabled=busy||!r.romanceEnabled;
 }
-function updateBusy(value){busy=value;renderLlamaState();updateMemoryBusy();$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear'])$(id).disabled=busy;$('fetchModels').disabled=busy||fetchingModels;$('saveKey').disabled=busy||!keyAvailable;$('deleteKey').disabled=busy||!keySaved;for(const id of ['relationshipProfile','relationshipName','createRelationship','renameRelationship','relationshipSource','mergeRelationship','archiveRelationship','relationshipArchived','restoreRelationship','romanceEnabled'])$(id).disabled=busy;$('confess').disabled=busy||!state.relationship?.romanceEnabled;}
+function updateBusy(value){busy=value;renderLlamaState();updateMemoryBusy();$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear'])$(id).disabled=busy;$('fetchModels').disabled=busy||fetchingModels;$('saveKey').disabled=busy||!keyAvailable;$('deleteKey').disabled=busy||!keySaved;for(const id of ['relationshipProfile','relationshipName','createRelationship','renameRelationship','relationshipSource','mergeRelationship','archiveRelationship','relationshipArchived','restoreRelationship','deleteRelationship','deleteArchivedRelationship','romanceEnabled'])$(id).disabled=busy;$('confess').disabled=busy||!state.relationship?.romanceEnabled;}
 async function initControl(){
  await refreshMemory();
  $('memoryList').onchange=()=>selectMemory($('memoryList').value);$('newMemory').onclick=()=>selectMemory();
@@ -145,6 +145,13 @@ async function initControl(){
  const selectedSource=()=>{const p=state.relationship.profiles.find(p=>p.id===$('relationshipSource').value&&p.id!==state.relationship.active);if(!p)throw new Error('整理するプロフィールを選んでください。');return p;};
  $('mergeRelationship').onclick=wrap(async()=>{const p=selectedSource(),r=state.relationship;if(!confirm('「'+p.label+'」の会話・記憶を「'+r.label+'」へ統合しますか？\n統合先の好感度・恋人状態を維持します。元データは非表示にして残し、復元できます。'))return;await relationAction('merge',{sourceId:p.id,targetId:r.active});},'relationshipStatus');
  $('archiveRelationship').onclick=wrap(async()=>{const p=selectedSource();if(confirm('「'+p.label+'」を一覧から非表示にしますか？会話・記憶・関係は残り、復元できます。'))await relationAction('archive',p.id);},'relationshipStatus');
+ const deleteProfile=async p=>{
+  if(dirty)throw new Error('変更した設定を先に保存してください。');
+  if(!confirm('「'+p.label+'」を完全削除しますか？\n識別子：'+p.id+'\n会話 '+(p.turns||0)+'往復・長期メモ '+(p.notes||0)+'件・要約 '+(p.hasSummary?'あり':'なし')+'\nこのプロフィールの会話・記憶・好感度とVRMへの割り当てを削除し、一覧へ復元できなくなります。統合先へ取り込んだ内容は残ります。'))return;
+  await relationAction('delete',p.id);status('relationshipStatus','プロフィールを完全削除しました。');
+ };
+ $('deleteRelationship').onclick=wrap(()=>deleteProfile(selectedSource()),'relationshipStatus');
+ $('deleteArchivedRelationship').onclick=wrap(async()=>{const p=(state.relationship.archived||[]).find(p=>p.id===$('relationshipArchived').value);if(!p)throw new Error('削除する非表示プロフィールを選んでください。');await deleteProfile(p);},'relationshipStatus');
  $('restoreRelationship').onclick=wrap(async()=>{const id=$('relationshipArchived').value;if(!id)throw new Error('復元するプロフィールを選んでください。');await relationAction('restore',id);},'relationshipStatus');
  $('romanceEnabled').onchange=wrap(async()=>{try{await relationAction('romance',$('romanceEnabled').checked);}finally{renderRelationship();}},'relationshipStatus');
  $('confess').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');await call(api.confess());status('relationshipStatus','気持ちを伝えました。返事は吹き出しと会話履歴に表示します。');},'relationshipStatus');

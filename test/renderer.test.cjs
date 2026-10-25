@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const THREE=require('./bundle-runtime.cjs'),{DEFAULTS}=require('../src/backend.cjs'),layout=require('../src/layout.cjs');
-async function boot(view,withModel=false,audioFixture=null,modelFixture=null){
+async function boot(view,withModel=false,audioFixture=null,modelFixture=null,confirmFixture=null){
  const faceControllers=[];const expressionModule=require('../src/expressions.cjs');
  const nodes=new Map(),listeners={},calls=[],rootEvents={},settings={...DEFAULTS,model:'test-local',modelPath:withModel?'fixture.vrm':''},events={};let notify,failSend=false,rendered,frame;
  const node=id=>{if(!nodes.has(id))nodes.set(id,{id,style:{},hidden:true,value:'',textContent:'',checked:false,disabled:false,children:[],clientWidth:440,clientHeight:518,scrollHeight:200,scrollTop:0,classList:{toggle(){},add(){}},append(...a){this.children.push(...a);},replaceChildren(){this.children=[];},add(o){this.children.push(o);},addEventListener(type,fn){this['on'+type]=fn;},getBoundingClientRect(){return {left:0,top:0,width:440,height:id==='speechCard'?120:518};},focus(){this.focused=true;},setPointerCapture(){this.capture=true;},hasPointerCapture(){return !!this.capture;},releasePointerCapture(){this.capture=false;},requestSubmit(){return this.onsubmit?.({preventDefault(){}});}});return nodes.get(id);};
@@ -14,7 +14,7 @@ async function boot(view,withModel=false,audioFixture=null,modelFixture=null){
  class Renderer{constructor(){this.domElement={};}setClearColor(){}setPixelRatio(value){calls.push(['pixelRatio',value]);}setSize(){}setAnimationLoop(cb){frame=cb;cb();}render(scene,camera){rendered={scene,camera};}}
  let now=0;const context={THREE:{...THREE,Clock:class{getDelta(){return .05;}},WebGLRenderer:Renderer},GLTFLoader:THREE.GLTFLoader,VRMLoaderPlugin:THREE.VRMLoaderPlugin,VRMUtils:THREE.VRMUtils,VRMAnimationLoaderPlugin:THREE.VRMAnimationLoaderPlugin,createVRMAnimationClip:THREE.createVRMAnimationClip,
   window:{AudioContext:class{constructor(){if(!audioFixture)throw new Error('No audio fixture');return audioFixture.ctx;}},companionAudio:require('../src/speech-audio.cjs'),companionVrma:require('../src/vrma-player.cjs'),companion:api,companionLayout:layout,companionOrientation:require('../src/orientation.cjs'),companionPicking:require('../src/picking.cjs'),companionHand:withModel==='hand'?{HandDrag:class{begin(){return true;}move(v){calls.push(['handMove',v.x,v.y,v.z]);}release(){calls.push(['handRelease']);}reset(){}restore(){}update(){}}}:require('../src/hand.cjs'),companionExpressions:{...expressionModule,FaceExpressions:class extends expressionModule.FaceExpressions{constructor(){super();faceControllers.push(this);}}},companionMotion:require('../src/motion.cjs'),companionInteraction:require('../src/interaction.cjs'),companionCloth:withModel==='cloth'?{ClothDrag:class{begin(){return true;}move(v){calls.push(['clothMove',v.x,v.y,v.z]);}release(){calls.push(['clothRelease']);}reset(){calls.push(['clothReset']);}restore(){}update(){}}}:require('../src/cloth.cjs'),addEventListener:(k,f)=>listeners[k]=f},document:{body:{className:'',dataset:{}},documentElement:{classList:{add(){}}},getElementById:node,createElement:()=>node('new-'+nodes.size),createTextNode:text=>({textContent:text}),addEventListener:(k,f)=>events[k]=f},location:{search:'?view='+view},URLSearchParams,
-  performance:{now:()=>now+=50},devicePixelRatio:1,ResizeObserver:class{constructor(fn){this.fn=fn;}observe(){}},requestAnimationFrame:fn=>fn(),Option:class{constructor(text,value){this.text=text;this.value=value;}},console,confirm:()=>true};
+  performance:{now:()=>now+=50},devicePixelRatio:1,ResizeObserver:class{constructor(fn){this.fn=fn;}observe(){}},requestAnimationFrame:fn=>fn(),Option:class{constructor(text,value){this.text=text;this.value=value;}},console,confirm:message=>{calls.push(['confirm',message]);return confirmFixture?confirmFixture(message):true;}};
  const code=fs.readFileSync(path.join(__dirname,'../src/renderer.js'),'utf8').split('\n').filter(l=>!l.startsWith('import ')).join('\n');
  const OriginalPoke=context.window.companionMotion.ChestPoke;
  context.window.companionMotion={...context.window.companionMotion,ChestPoke:class extends OriginalPoke{poke(hit,direction){calls.push(['chestPoke']);return super.poke(hit,direction);}reset(){calls.push(['chestReset']);super.reset();}}};
@@ -358,4 +358,15 @@ test('empty long-term memory still explains that short-term conversation history
  const {node,notify}=await boot('control');assert.match(node('memoryAvailability').textContent,/直近の会話は履歴から参照/);assert.match(node('memoryAvailability').textContent,/整理完了の日時は未記録です/);
  notify({settings:{...DEFAULTS,model:'test',memoryAuto:false}});assert.match(node('memoryAvailability').textContent,/自動整理は無効/);
  const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');assert.ok(html.includes('id="memoryAvailability"'));assert.ok(html.includes('未整理の会話が2往復'));
+});
+
+test('permanent deletion asks about the selected visible or hidden profile and cancellation sends no mutation',async()=>{
+ const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');for(const id of ['deleteRelationship','deleteArchivedRelationship'])assert.ok(html.includes('id="'+id+'"'));
+ for(const archived of [false,true])for(const accepted of [false,true]){
+  const {node,calls,notify}=await boot('control',false,null,null,()=>accepted),base=require('../src/relationship.cjs').view(require('../src/relationship.cjs').clean()),target={id:'delete-me-123',label:'同じ名前',turns:7,notes:3,hasSummary:true};
+  notify({relationship:{...base,profiles:[...base.profiles,...(archived?[]:[target])],archived:archived?[target]:[]}});node(archived?'relationshipArchived':'relationshipSource').value=target.id;
+  await node(archived?'deleteArchivedRelationship':'deleteRelationship').onclick();const prompt=calls.find(c=>c[0]==='confirm')?.[1];assert.ok(prompt);assert.match(prompt,/同じ名前/);assert.match(prompt,/delete-me-123/);assert.match(prompt,/会話 7往復・長期メモ 3件・要約 あり/);assert.match(prompt,/復元できなくなります/);
+  const mutations=calls.filter(c=>c[0]==='relationship'&&c[1]==='delete');assert.equal(mutations.length,accepted?1:0);if(accepted)assert.equal(mutations[0][2],target.id);
+  notify({busy:true});assert.equal(node('deleteRelationship').disabled,true);assert.equal(node('deleteArchivedRelationship').disabled,true);
+ }
 });

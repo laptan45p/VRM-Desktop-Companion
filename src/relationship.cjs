@@ -78,6 +78,11 @@ function forModel(data,modelPath,label,activeHistory,choice='current'){
 }
 function rename(data,id,label){if(typeof label!=='string'||!label.trim()||label.length>100)throw new Error('キャラクター名は1〜100文字で入力してください。');const p=data.profiles.find(p=>p.id===id);if(!p)throw new Error('キャラクターが見つかりません。');p.label=label.trim();}
 function archive(data,id,value=true){const p=data.profiles.find(p=>p.id===id);if(!p)throw new Error('キャラクターが見つかりません。');if(value&&id===data.active)throw new Error('使用中のキャラクターは非表示にできません。別のキャラクターを選んでください。');p.archived=!!value;}
+function remove(data,id){
+ if(typeof id!=='string'||!data.profiles.some(p=>p.id===id))throw new Error('削除するプロフィールを選び直してください。');
+ if(id===data.active)throw new Error('使用中のプロフィールは削除できません。別のキャラクターを選んでください。');
+ data.profiles=data.profiles.filter(p=>p.id!==id);data.bindings=data.bindings.filter(b=>b.id!==id);
+}
 function merge(data,sourceId,targetId,activeHistory){
  if(targetId!==data.active||sourceId===targetId)throw new Error('統合先のキャラクターを選び直してください。');
  const source=data.profiles.find(p=>p.id===sourceId),target=current(data);if(!source||source.archived)throw new Error('統合元のキャラクターを選び直してください。');
@@ -93,5 +98,5 @@ function greeting(p,now=Date.now()){
  return p.affinity>=50?'来てくれたんだ。どうしたの？':p.affinity>=20?'お話しする？どうしたの？':p.affinity< -30?'……何か用かな？':'どうしたの？';
 }
 function caption(p,now=Date.now()){return {shy:'少し照れた、やわらかな話し方',happy:'嬉しそうで親しみのある話し方',angry:'不快な気持ちを落ち着いて伝える話し方',surprised:'少し驚いた話し方'}[mood(p,now)]||'';}
-module.exports={clean,current,view,stage,mood,prepare,touch,context,select,create,forModel,boundId,rename,archive,merge,caption,greeting,history,DAY_CAP};
+module.exports={clean,current,view,stage,mood,prepare,touch,context,select,create,forModel,boundId,rename,archive,remove,merge,caption,greeting,history,DAY_CAP};
 

@@ -414,3 +414,11 @@ test('automatic memory processes an idle backlog in bounded batches without a ma
  const view=(await b.invoke('memory-view')).data;assert.equal(view.items.length,1);assert.match(view.summary,/食べ物/);assert.equal(view.stats.pendingTurns,0);assert.equal(view.stats.pendingSummaryTurns,0);assert.ok(view.organizedAt>0);assert.ok(b.saved().relationships.profiles[0].memory.items.length);
  await b.invoke('save',{...DEFAULTS,model:'test',memoryAuto:false});assert.ok(!timers.some(t=>!t.cancelled&&!t.ran));
 });
+
+test('permanent deletion is control-only, preserves the active conversation and rolls back disk failures',async()=>{
+ const b=await boot({model:'test',memoryAuto:false});await b.invoke('chat','残す会話');const target=(await b.invoke('state')).data.relationship.active;
+ await b.invoke('relationship','create','削除対象');const source=(await b.invoke('state')).data.relationship.active;await b.invoke('chat','削除する会話');await b.invoke('memory-edit',source,'save',{text:'削除するメモ',kind:'profile'});await b.invoke('relationship','select',target);
+ assert.equal((await b.as(2,'relationship','delete',source)).ok,false);assert.equal((await b.invoke('relationship','delete',target)).ok,false);const before=JSON.stringify((await b.invoke('state')).data.history);
+ b.failSave(true);assert.equal((await b.invoke('relationship','delete',source)).ok,false);b.failSave(false);assert.equal((await b.invoke('state')).data.relationship.profiles.length,2);assert.equal((await b.invoke('relationship','select',source)).ok,true);assert.equal((await b.invoke('memory-view')).data.items.length,1);await b.invoke('relationship','select',target);
+ assert.equal((await b.invoke('relationship','delete',source)).ok,true);const state=(await b.invoke('state')).data;assert.equal(state.relationship.profiles.length,1);assert.equal(JSON.stringify(state.history),before);assert.equal(b.saved().relationships.profiles.some(p=>p.id===source),false);assert.equal((await b.invoke('relationship','restore',source)).ok,false);
+});

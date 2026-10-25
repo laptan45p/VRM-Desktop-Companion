@@ -65,3 +65,17 @@ test('profile cleanup validates targets, preserves hidden data and disambiguates
  R.rename(data,target,'  分かりやすい名前  ');assert.equal(R.current(data).label,'分かりやすい名前');assert.throws(()=>R.rename(data,target,' '));assert.throws(()=>R.archive(data,target));assert.throws(()=>R.merge(data,target,target,[]));assert.throws(()=>R.merge(data,source,'stale',[]));
  R.archive(data,source);assert.equal(data.profiles.length,2);assert.equal(R.view(data).archived[0].id,source);assert.throws(()=>R.merge(data,source,target,[]));R.archive(data,source,false);assert.equal(R.view(R.clean(data)).profiles.length,2);
 });
+
+test('permanent profile deletion removes its records and bindings and survives disk reload',()=>{
+ const M=require('../src/memory.cjs'),data=R.clean(null,'残すプロフィール'),target=data.active,h=[{role:'user',content:'残す会話'},{role:'assistant',content:'残す返事'}];
+ const source=R.create(data,'削除対象');R.select(data,source,'C:/Delete.vrm',h);R.current(data).memory=M.edit(null,'','削除対象のメモ');R.current(data).memory.summary='削除対象の要約';R.current(data).affinity=45;
+ R.select(data,target,'C:/Keep.vrm',[{role:'user',content:'削除対象の会話'},{role:'assistant',content:'削除対象の返事'}]);const kept=structuredClone(R.current(data));
+ R.remove(data,source);assert.deepEqual(R.current(data),kept);assert.equal(data.profiles.some(p=>p.id===source),false);assert.equal(data.bindings.some(b=>b.id===source),false);assert.equal(R.boundId(data,'C:/Keep.vrm'),target);assert.throws(()=>R.select(data,source,'',h));
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'profile-delete-'));try{const store=new Store(dir);store.data.relationships=data;store.data.history=h;store.save();const loaded=new Store(dir);loaded.load();assert.deepEqual(loaded.data.relationships,data);assert.deepEqual(loaded.data.history,h);assert.equal(fs.readFileSync(store.file,'utf8').includes(source),false);}finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('deleting a merged hidden source preserves imported data; invalid or active targets do not mutate records',()=>{
+ const M=require('../src/memory.cjs'),data=R.clean(null,'統合先'),target=data.active,source=R.create(data,'統合元');R.select(data,source,'C:/Old.vrm',[]);R.current(data).memory=M.edit(null,'','取り込むメモ');
+ R.select(data,target,'C:/Keep.vrm',[{role:'user',content:'以前の話'},{role:'assistant',content:'以前の返事'}]);R.merge(data,source,target,[]);const imported=structuredClone(R.current(data));assert.equal(R.view(data).archived.length,1);
+ R.remove(data,source);assert.deepEqual(R.current(data),imported);assert.equal(R.boundId(data,'C:/Old.vrm'),target);assert.equal(R.view(data).archived.length,0);
+ const snapshot=structuredClone(data);for(const id of [target,'missing',null,3])assert.throws(()=>R.remove(data,id));assert.deepEqual(data,snapshot);
+});
