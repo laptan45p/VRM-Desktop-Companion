@@ -58,3 +58,11 @@ Ollama等がモデルを読み込んでいる場合、そのモデルをアン�
 - [llama.cpp公式リリース](https://github.com/ggml-org/llama.cpp/releases/tag/b11829)
 - [llama-server公式説明](https://github.com/ggml-org/llama.cpp/tree/master/tools/server)
 - [llama.cppのMITライセンス](llm-tools/LICENSE-llama.cpp.txt)
+
+## Qwenなどでthinkブロックが表示される場合
+
+v0.1.56以降は同梱llama.cpp b11829の `--reasoning off --reasoning-format deepseek` を指定し、生成要求にも `reasoning_effort: none`・`reasoning_format: deepseek` と既存の `enable_thinking: false` を送ります。思考モードと会話テンプレートは別の設定です。Qwenの会話テンプレートはまず「自動」で使い、GGUF内の設定を維持してください。
+
+モデルのテンプレートが思考の無効化を受け付けず、本文の先頭に `<think>…</think>` を返す場合も、会話本文と分離します。思考用の部分は表示・読み上げ・新しい会話履歴への保存に使わず、次の要求や記憶整理へ送る既存のassistant履歴からも除外します。既存の保存ファイル自体は書き換えません。本文中のタグの説明やコード例は削除しません。思考だけで返答本文が取得できない場合は、思考を表示せずエラーを案内します。
+
+更新後はCompanionを再起動し、llama-serverも起動し直してください。GGUFやサーバー本体の再取得は不要です。この環境では実GPU・実GGUFでの思考無効化や応答品質は未検証です。

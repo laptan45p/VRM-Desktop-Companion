@@ -10,6 +10,7 @@ function endpoint(settings){return `http://127.0.0.1:${settings.llamaPort}`;}
 function launchArgs(s,key){
  const args=['--model',s.llamaModelPath,'--alias',MODEL,'--host','127.0.0.1','--port',String(s.llamaPort),'--ctx-size',String(s.llamaContext),'--n-gpu-layers',String(s.llamaGpuLayers),'--parallel','1','--api-key',key,'--dry-multiplier',String(s.llamaDryMultiplier),'--dry-base',String(s.llamaDryBase),'--dry-allowed-length',String(s.llamaDryAllowedLength),'--dry-penalty-last-n',String(s.llamaContext),'--repeat-penalty','1.0'];
  const config=resolveChatTemplate(s);if(config.template)args.push('--no-jinja','--chat-template',config.template);
+ args.push('--reasoning','off','--reasoning-format','deepseek');
  return args;
 }
 async function checkFiles(executable,model){

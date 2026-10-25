@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const voices=require('./voice-bindings.cjs');
 const characters=require('./character-bindings.cjs');
+const {replyText,historyText}=require('./reply-text.cjs');
 const DEFAULTS = {
   memoryEnabled: true, memoryAuto: true,
   llamaExecutable: '', llamaModelPath: '', llamaPort: 18080, llamaContext: 4096, llamaGpuLayers: 99, llamaTemplate: 'auto', llamaDryMultiplier: .8, llamaDryBase: 1.75, llamaDryAllowedLength: 2,
@@ -101,10 +102,10 @@ async function chat(settings, history, userText, signal, {maxTokens,timeoutMs=18
   if (settings.provider === 'ollama' && /(?:[:\-]cloud)(?:$|[:\-])/i.test(settings.model)) throw new Error('ローカル用モデルを選んでください（cloudモデルには対応しません）。');
   if(settings.provider==='ollama'&&/^(?:hammerai\/nemomix-unleashed:12b-q4_k_m|vrm-companion-nemomix:12b-q4_k_m|nemomix-companion:12b)$/i.test(settings.model))await checkNemoChatTemplate(settings,signal);
   const identity=`あなたはassistantとしてキャラクター「${settings.name}」の発言だけを返します。userは話しかけているユーザーです。\n${settings.persona}${settings.selfPronoun?'\nassistant（キャラクター）自身の一人称は「'+settings.selfPronoun+'」です。これはユーザー名を示す情報ではありません。':''}${settings.userAddress?'\nuser（ユーザー）への呼び方は「'+settings.userAddress+'」です。ユーザーには「'+settings.userAddress+'」と呼んで話しかけてください。毎回呼びかける必要はありません。':''}\n会話履歴や渡された記録に根拠がない過去の出来事を作らず、「覚えている」という自分の過去の発言だけを記憶の根拠にしないでください。${systemExtra?"\n"+systemExtra:""}`;
-  const messages = [{role:'system',content:identity}, ...history.slice(-settings.historyTurns * 2), {role:'user',content:userText}];
+  const messages = [{role:'system',content:identity}, ...historyText(history.slice(-settings.historyTurns * 2)), {role:'user',content:userText}];
   const ollama = settings.provider === 'ollama';
   const body = {model:settings.model, messages, stream:false, ...(ollama ? {options:{temperature:settings.temperature,num_predict:maxTokens}} : {temperature:settings.temperature,max_tokens:maxTokens})};
-  if(settings.provider==='llamacpp')Object.assign(body,{dry_multiplier:settings.llamaDryMultiplier,dry_base:settings.llamaDryBase,dry_allowed_length:settings.llamaDryAllowedLength,dry_penalty_last_n:settings.llamaContext,repeat_penalty:1.0,chat_template_kwargs:{enable_thinking:false}});
+  if(settings.provider==='llamacpp')Object.assign(body,{dry_multiplier:settings.llamaDryMultiplier,dry_base:settings.llamaDryBase,dry_allowed_length:settings.llamaDryAllowedLength,dry_penalty_last_n:settings.llamaContext,repeat_penalty:1.0,chat_template_kwargs:{enable_thinking:false},reasoning_effort:'none',reasoning_format:'deepseek'});
   if(cloud){
     delete body.temperature;delete body.max_tokens;
     body[settings.provider==='openai'?'max_completion_tokens':settings.provider==='openrouter'?'max_tokens':settings.compatibleTokenParam]=maxTokens;
@@ -120,7 +121,9 @@ async function chat(settings, history, userText, signal, {maxTokens,timeoutMs=18
   const r = await requestJSON(base + (ollama ? '/api/chat' : cloud?'/chat/completions':'/v1/chat/completions'), {method:'POST',headers:{'Content-Type':'application/json',...authorization(settings,apiKey)},body:JSON.stringify(body),signal},timeoutMs);
   const answer = ollama ? r.message?.content : r.choices?.[0]?.message?.content;
   if (typeof answer !== 'string' || !answer.trim()) throw new Error(cloud?'返答が空でした。対応する会話モデルを選び、出力トークン上限や推論量の設定を確認してください。':'返答が空でした。モデル設定やサーバーログを確認してください。');
-  return answer.trim();
+  const visible=replyText(answer);
+  if(!visible)throw new Error('モデルから思考用出力だけが返り、返答本文を取得できませんでした。'+(settings.provider==='llamacpp'?'llama-serverを停止して起動し直し、会話テンプレートを自動にしてお試しください。':'接続先の思考モード設定や出力上限を確認してください。'));
+  return visible;
 }
 async function touchReply(settings,history,reaction,signal,{apiKey='',relationshipContext=''}={}){
  const regions={head:'頭・顔',chest:'胸部',butt:'臀部',cloth:'衣服の裾',hand:'手'},gestures={poke:'軽くつつかれた',stroke:'撫でられた'},emotions={shy:'照れ・恥ずかしさ',surprised:'驚き',angry:'怒り'};

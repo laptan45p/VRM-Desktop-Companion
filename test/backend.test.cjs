@@ -109,3 +109,12 @@ test('character addressing is optional, bounded and included in conversation sys
 test('character and user addressing have explicit roles and unsupported recollection is not treated as evidence',async()=>{
  await server(async(req,res)=>{const b=await readBody(req),system=b.messages[0].content;assert.match(system,/assistant.*キャラクター「相棒A」/);assert.match(system,/assistant（キャラクター）自身の一人称は「私」/);assert.match(system,/user（ユーザー）への呼び方は「先輩」/);assert.match(system,/自分の過去の発言だけを記憶の根拠にしない/);assert.equal(b.messages[1].content,'前回の会話を覚えてる？');assert.equal(b.messages[2].content,'覚えています');assert.equal(b.messages[3].content,'何話した？');res.end(JSON.stringify({message:{content:'確認できる記録がありません。'}}));},async endpoint=>{assert.equal(await chat({...DEFAULTS,endpoint,model:'local',name:'相棒A',selfPronoun:'私',userAddress:'先輩'},[{role:'user',content:'前回の会話を覚えてる？'},{role:'assistant',content:'覚えています'}],'何話した？'),'確認できる記録がありません。');});
 });
+
+test('llama-server reasoning controls preserve automatic formatting and return only final speech text',async()=>{
+ let body;await server(async(req,res)=>{body=await readBody(req);assert.equal(body.reasoning_effort,'none');assert.equal(body.reasoning_format,'deepseek');assert.equal(body.chat_template_kwargs.enable_thinking,false);assert.equal(body.messages[2].content,'以前の返答');assert.equal(body.messages.at(-1).content,'テストの質問');res.end(JSON.stringify({choices:[{message:{content:'<think>非表示の処理用テストデータ</think>\n返答本文です。',reasoning_content:'別フィールドのテストデータ'}}]}));},async endpoint=>{
+  const settings={...DEFAULTS,provider:'llamacpp',endpoint,llamaPort:Number(new URL(endpoint).port),model:'test'},history=[{role:'user',content:'以前の質問'},{role:'assistant',content:'<think>以前の処理用データ</think>以前の返答'}];assert.equal(await chat(settings,history,'テストの質問',undefined,{apiKey:'test-key'}),'返答本文です。');assert.ok(history[1].content.includes('<think>'));
+ });
+});
+test('reasoning-only or truncated replies fail without disclosing or storing a partial thought',async()=>{
+ for(const content of ['<think>非表示にする処理用データ','<think>非表示にする処理用データ</think>'])await server(async(req,res)=>{await readBody(req);res.end(JSON.stringify({message:{content}}));},async endpoint=>{await assert.rejects(chat({...DEFAULTS,endpoint,model:'local'},[],'質問'),error=>error.message.includes('返答本文を取得できません')&&!error.message.includes('非表示にする処理用データ'));});
+});

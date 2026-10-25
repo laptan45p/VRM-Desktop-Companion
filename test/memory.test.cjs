@@ -64,3 +64,7 @@ test('merged notes respect target bounds without mutating sources or losing sour
  source=M.edit(source,'','統合元だけの記録');source.summary='以前の話題';const snapshot=structuredClone(source),merged=M.merge(target,source);assert.equal(merged.items.length,100);assert.deepEqual(source,snapshot);assert.match(merged.summary,/以前/);
  const small=M.merge(M.edit(null,'','共通の記録'),M.edit(source,'','共通の記録'));assert.equal(small.items.length,2);assert.equal(small.items.filter(i=>i.text==='共通の記録').length,1);assert.equal(small.items.find(i=>i.text==='統合元だけの記録').source.type,'manual');
 });
+
+test('organizing legacy history excludes reasoning from assistant text and preserves the user source',()=>{
+ const h=history(3);h[0].content='ユーザーの <think> という文字列';h[1].content='<think>要約に含めない処理用データ</think>返答本文';const job=M.plan(null,h,1,true),payload=JSON.parse(M.prompt(job));assert.equal(payload.olderConversation[0].assistant,'返答本文');assert.equal(payload.userSources[0].text,h[0].content);assert.equal(JSON.stringify(payload).includes('要約に含めない処理用データ'),false);assert.ok(h[1].content.includes('<think>'));
+});

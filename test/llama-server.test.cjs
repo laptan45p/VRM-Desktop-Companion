@@ -95,3 +95,10 @@ test('format verification rejects dropped system or history messages and respect
  }
  let finish;const f=fixture({fetchJSON:async(url,key,signal,body)=>url.endsWith('/apply-template')?new Promise(resolve=>finish=()=>resolve({prompt:body.messages.map(m=>m.content).join(' ')})):{data:[{id:MODEL}]}}),pending=f.manager.start(s),rejected=assert.rejects(pending,/中止/);await new Promise(r=>setImmediate(r));const stop=f.manager.stop();finish();await Promise.all([rejected,stop]);assert.equal(f.manager.phase,'stopped');assert.equal(f.manager.child,null);
 });
+
+test('managed server disables thinking and separates reasoning while Qwen retains the embedded template',()=>{
+ for(const llamaTemplate of ['auto','mistral-v1']){
+  const s=cleanSettings({provider:'llamacpp',llamaModelPath:'/models/Test-Qwen3-8B.gguf',llamaTemplate}),args=launchArgs(s,'test-key');assert.equal(args[args.indexOf('--reasoning')+1],'off');assert.equal(args[args.indexOf('--reasoning-format')+1],'deepseek');
+  if(llamaTemplate==='auto'){assert.equal(args.includes('--chat-template'),false);assert.equal(args.includes('--no-jinja'),false);}else assert.equal(args[args.indexOf('--chat-template')+1],'mistral-v1');
+ }
+});

@@ -1,5 +1,6 @@
 'use strict';
 const {createHash,randomUUID}=require('node:crypto');
+const {replyText}=require('./reply-text.cjs');
 const hash=text=>createHash('sha256').update(text).digest('hex');
 const text=(value,max)=>typeof value==='string'?value.trim().slice(0,max):'';
 const stamp=value=>Number.isFinite(value)&&value>0?Math.min(value,8640000000000000):0;
@@ -32,7 +33,7 @@ function plan(raw,history,turns,force=false){
  return {previousSummary:m.summary,summaryTurns:dated(summaryTurns),extractTurns:dated(extractTurns)};
 }
 function prompt(job){
- const data={previousSummary:job.previousSummary.slice(0,1000),olderConversation:job.summaryTurns.map(t=>({id:t.id,user:t.user.slice(0,500),assistant:t.assistant.slice(0,500)})),userSources:job.extractTurns.map(t=>({sourceId:t.id,text:t.user.slice(0,500),at:t.at?new Date(t.at).toISOString():null}))};
+ const data={previousSummary:job.previousSummary.slice(0,1000),olderConversation:job.summaryTurns.map(t=>({id:t.id,user:t.user.slice(0,500),assistant:replyText(t.assistant).slice(0,500)})),userSources:job.extractTurns.map(t=>({sourceId:t.id,text:t.user.slice(0,500),at:t.at?new Date(t.at).toISOString():null}))};
  // Bound extraction input for small local context windows. Keep identifiers intact.
  let value=JSON.stringify(data);
  while(value.length>2800){
