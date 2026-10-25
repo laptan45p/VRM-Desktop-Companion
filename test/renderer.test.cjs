@@ -376,3 +376,7 @@ test('memory-preserving restart is a separate action with confirmation, cancella
  for(const accepted of [false,true]){const {node,calls,notify}=await boot('control',false,null,null,()=>accepted);await node('restartConversation').onclick();assert.equal(calls.filter(c=>c[0]==='restartConversation').length,accepted?1:0);assert.match(calls.find(c=>c[0]==='confirm')[1],/要約・長期メモ・好感度は残ります/);assert.match(calls.find(c=>c[0]==='confirm')[1],/整理待ちとして保存/);notify({busy:true});assert.equal(node('restartConversation').disabled,true);}
  const preload=fs.readFileSync(path.join(__dirname,'../src/preload.cjs'),'utf8');assert.ok(preload.includes("restartConversation:()=>ipcRenderer.invoke('restart-conversation')"));
 });
+
+test('startup conversation preference is enabled by default, shipped in HTML and saved with an opt-out',async()=>{
+ const html=fs.readFileSync(path.join(__dirname,'../src/index.html'),'utf8');assert.ok(html.includes('id="restartConversationOnStartup"'));const {node,calls}=await boot('control');assert.equal(node('restartConversationOnStartup').checked,true);node('restartConversationOnStartup').checked=false;node('settingsForm').oninput({target:{id:'restartConversationOnStartup'}});await node('settingsForm').onsubmit({preventDefault(){}});assert.equal(calls.findLast(c=>c[0]==='save')[1].restartConversationOnStartup,false);
+});

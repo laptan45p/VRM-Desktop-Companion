@@ -196,12 +196,18 @@ async function selectVRM(){
 if(gotLock)app.whenReady().then(async()=>{
  app.setAppUserModelId('local.vrm.desktop.companion');store=new Store(app.getPath('userData'));keys=new ApiKeys(app.getPath('userData'),safeStorage);
  try{keys.load();}catch{startupError='APIキーの保存データを読み込めません。クラウド利用時は登録し直してください。';}
- try{store.load();}catch(e){startupError='保存データを読み込めませんでした。設定を確認してください。';try{await fs.copyFile(store.file,store.file+'.backup-'+Date.now());}catch{}}
+ let startupDataLoaded=false;
+ try{store.load();startupDataLoaded=true;}catch(e){startupError='保存データを読み込めませんでした。設定を確認してください。';try{await fs.copyFile(store.file,store.file+'.backup-'+Date.now());}catch{}}
  llama=new LlamaServer({defaultExecutable:path.join(app.isPackaged?path.dirname(process.execPath):path.join(__dirname,'..'),'llm-tools','llama-server','llama-server.exe'),onState:llamaState=>broadcast({llamaState})});
  voices.initialize(store.data);characters.initialize(store.data);
  store.data.relationships=relationship.clean(store.data.relationships,store.data.settings.name);
  relationship.current(store.data.relationships).history=relationship.history(store.data.history);
  if(store.data.settings.modelPath&&!store.data.relationships.bindings.length)relationship.select(store.data.relationships,store.data.relationships.active,store.data.settings.modelPath,store.data.history);
+ if(startupDataLoaded&&store.data.settings.restartConversationOnStartup&&store.data.history.length){
+  const previous=structuredClone(store.data);
+  try{const profile=relationship.current(store.data.relationships);profile.memory=memory.restartConversation(profile.memory,store.data.history);profile.history=[];store.data.history=[];store.save();}
+  catch(e){store.data=previous;startupError+=' 起動時の会話リセットができませんでした。元の会話を保持しています：'+String(e.message).slice(0,200);}
+ }
  const webPreferences={preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,autoplayPolicy:'no-user-gesture-required'};
  const r=screen.getPrimaryDisplay().workArea,areas=inputAreas();displayLayout=areas.map(r=>({...r}));
  const controlInitial={x:r.x+Math.round((r.width-570)/2),y:r.y+Math.round((r.height-850)/2),width:570,height:850};

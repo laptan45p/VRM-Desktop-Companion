@@ -32,6 +32,7 @@
   <div class="inline"><label>会話を送る範囲（往復数）<input type="number" id="historyTurns" min="1" max="40"></label><label>返答のランダムさ<input type="number" id="temperature" min="0" max="2" step="0.1"></label></div>
   <h2>会話の記憶</h2>
   <label class="check"><input id="memoryEnabled" type="checkbox"> 保存した要約・長期メモを会話に使う</label>
+  <label class="check"><input id="restartConversationOnStartup" type="checkbox"> 起動時は記憶を残して新しい会話を始める</label><p class="path">初期設定は有効です。完全終了後の起動時に、選択中のキャラクターの直近履歴をリセットし、要約・長期メモ・好感度と未整理の会話は保持します。無効にすると前回の会話履歴から再開します。</p>
   <label class="check"><input id="memoryAuto" type="checkbox"> 会話の合間に記憶を自動整理する</label>
   <p class="path">直近の会話は「会話を送る範囲」の往復数までそのまま渡し、その範囲から外れた会話は要約します。手動保存は通常不要です。長期メモはユーザー発言から原文を引用して保存し、話題に関係するものを選んで渡します。記憶は「ふたりの関係」で選んだキャラクターごとに保存されます。</p>
   <p class="path">自動整理は未整理の会話が2往復、または直近履歴から外れた未要約の会話があるとき、会話終了の5秒後に最大6往復ずつ行います。残りは順に整理します。会話とは別のLLM呼び出しが発生し、クラウド利用時は追加料金がかかります。次の会話・ふれあいを優先して整理を中止します。</p>

@@ -5,7 +5,7 @@ const voices=require('./voice-bindings.cjs');
 const characters=require('./character-bindings.cjs');
 const {replyText,historyText}=require('./reply-text.cjs');
 const DEFAULTS = {
-  memoryEnabled: true, memoryAuto: true,
+  memoryEnabled: true, memoryAuto: true, restartConversationOnStartup: true,
   llamaExecutable: '', llamaModelPath: '', llamaPort: 18080, llamaContext: 4096, llamaGpuLayers: 99, llamaTemplate: 'auto', llamaDryMultiplier: .8, llamaDryBase: 1.75, llamaDryAllowedLength: 2,
   cloudMaxTokens: 1024, cloudReasoning: 'auto', cloudTemperature: false, compatibleTokenParam: 'max_tokens', provider: 'ollama', endpoint: 'http://127.0.0.1:11434', model: '',
   name: 'コンパニオン', selfPronoun: '', userAddress: '', persona: 'あなたはデスクトップに住む親しみやすい相棒です。日本語で自然に会話してください。返答は基本的に短く、相手の話をよく聞いてください。',
@@ -34,7 +34,7 @@ function cleanSettings(input = {}) {
   for(const k of ['llamaPort','llamaContext','llamaGpuLayers','llamaDryAllowedLength'])s[k]=Math.round(s[k]);
   if(['auto','mistral-v1','mistral-v3-tekken','chatml','llama3'].includes(input.llamaTemplate))s.llamaTemplate=input.llamaTemplate;
   if(s.provider==='llamacpp'){s.endpoint=require('./llama-server.cjs').endpoint(s);s.model=require('./llama-server.cjs').MODEL;}
-  for(const k of ['memoryEnabled','memoryAuto','topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled'])if(typeof input[k]==='boolean')s[k]=input[k];
+  for(const k of ['memoryEnabled','memoryAuto','restartConversationOnStartup','topmost','lipSync','softIdle','touchEnabled','clothDrag','handDrag','randomMotion','ttsEnabled'])if(typeof input[k]==='boolean')s[k]=input[k];
   return s;
 }
 function localBase(endpoint) {

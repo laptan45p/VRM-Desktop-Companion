@@ -118,3 +118,8 @@ test('llama-server reasoning controls preserve automatic formatting and return o
 test('reasoning-only or truncated replies fail without disclosing or storing a partial thought',async()=>{
  for(const content of ['<think>非表示にする処理用データ','<think>非表示にする処理用データ</think>'])await server(async(req,res)=>{await readBody(req);res.end(JSON.stringify({message:{content}}));},async endpoint=>{await assert.rejects(chat({...DEFAULTS,endpoint,model:'local'},[],'質問'),error=>error.message.includes('返答本文を取得できません')&&!error.message.includes('非表示にする処理用データ'));});
 });
+
+test('startup conversation restart defaults on for legacy settings and an opt-out persists',()=>{
+ assert.equal(cleanSettings({}).restartConversationOnStartup,true);assert.equal(cleanSettings({restartConversationOnStartup:false}).restartConversationOnStartup,false);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'startup-setting-'));try{const store=new Store(dir);store.data.settings=cleanSettings({restartConversationOnStartup:false});store.save();const loaded=new Store(dir);loaded.load();assert.equal(loaded.data.settings.restartConversationOnStartup,false);}finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

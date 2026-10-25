@@ -30,7 +30,7 @@ for file in pathlib.Path(sys.argv[1]).glob('*.zip'):
   app=prefix+('update-files/resources/app/' if file.name.endswith('-Update.zip') else 'resources/app/' if file.name.endswith('-Windows-x64.zip') else '')
   assert z.read(app+'src/tts.cjs') == pathlib.Path(sys.argv[2],'src/tts.cjs').read_bytes()
   assert '192.168.1.101:8088' in z.read(app+'src/index.html').decode('utf-8')
-  for name in ['restartConversation','memoryAvailability','mergeRelationship','archiveRelationship','restoreRelationship','renameRelationship','deleteRelationship','deleteArchivedRelationship']:
+  for name in ['restartConversationOnStartup','restartConversation','memoryAvailability','mergeRelationship','archiveRelationship','restoreRelationship','renameRelationship','deleteRelationship','deleteArchivedRelationship']:
    assert 'id="'+name+'"' in z.read(app+'src/index.html').decode('utf-8')
   for name in ['memory.cjs','relationship.cjs','main.cjs','backend.cjs','reply-text.cjs','preload.cjs','renderer.js','style.css']:
    assert z.read(app+'src/'+name) == pathlib.Path(sys.argv[2],'src',name).read_bytes()
