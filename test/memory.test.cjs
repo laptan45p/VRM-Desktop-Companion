@@ -68,3 +68,15 @@ test('merged notes respect target bounds without mutating sources or losing sour
 test('organizing legacy history excludes reasoning from assistant text and preserves the user source',()=>{
  const h=history(3);h[0].content='ユーザーの <think> という文字列';h[1].content='<think>要約に含めない処理用データ</think>返答本文';const job=M.plan(null,h,1,true),payload=JSON.parse(M.prompt(job));assert.equal(payload.olderConversation[0].assistant,'返答本文');assert.equal(payload.userSources[0].text,h[0].content);assert.equal(JSON.stringify(payload).includes('要約に含めない処理用データ'),false);assert.ok(h[1].content.includes('<think>'));
 });
+
+test('conversation restart preserves saved memory and queues unprocessed turns until both summary and extraction complete',()=>{
+ let m=M.edit(null,'','紅茶が好きです','preference');m.summary='以前は本について話した。';m.summaryAt=100;
+ const h=history(2),before=structuredClone(m),next=M.restartConversation(m,h);assert.deepEqual(m,before);assert.equal(next.summary,m.summary);assert.deepEqual(next.items,m.items);assert.equal(next.pending.length,4);assert.equal(M.restartConversation(next,h).pending.length,4);
+ const stats=M.describe(next,[],12);assert.equal(stats.shortTermTurns,0);assert.equal(stats.archivedTurns,2);assert.equal(stats.pendingSummaryTurns,2);
+ const job=M.plan(next,[],12);assert.equal(job.summaryTurns.length,2);assert.equal(job.extractTurns.length,2);const done=M.apply(next,job,{summary:'本と食べ物について話した。',facts:[{sourceId:job.extractTurns[0].id,quote:'好きな食べ物はカレーです。',kind:'preference'}]});assert.equal(done.pending.length,0);assert.equal(done.items.length,2);assert.equal(M.plan(done,[],12),null);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'restart-memory-'));try{const store=new Store(dir);R.current(store.data.relationships).memory=next;store.save();const restored=new Store(dir);restored.load();assert.deepEqual(R.current(restored.data.relationships).memory,next);}finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('restart overflow does not drop unprocessed data and explicit erase clears queued conversations',()=>{
+ const queued=M.restartConversation(null,history(100)),snapshot=structuredClone(queued);assert.throws(()=>M.restartConversation(queued,[{role:'user',content:'追加の会話'},{role:'assistant',content:'追加の返事'}]),/100往復/);assert.deepEqual(queued,snapshot);
+ const m=M.edit(M.restartConversation(null,history(2)),'','残すメモ');const erased=M.clearConversation(m,[]);assert.equal(erased.pending.length,0);assert.equal(erased.items.length,1);assert.equal(M.plan(erased,[],12,true),null);const all=M.clearAll(m,[]);assert.equal(all.pending.length,0);assert.equal(all.items.length,0);
+});

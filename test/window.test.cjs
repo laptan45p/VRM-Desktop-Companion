@@ -422,3 +422,16 @@ test('permanent deletion is control-only, preserves the active conversation and 
  b.failSave(true);assert.equal((await b.invoke('relationship','delete',source)).ok,false);b.failSave(false);assert.equal((await b.invoke('state')).data.relationship.profiles.length,2);assert.equal((await b.invoke('relationship','select',source)).ok,true);assert.equal((await b.invoke('memory-view')).data.items.length,1);await b.invoke('relationship','select',target);
  assert.equal((await b.invoke('relationship','delete',source)).ok,true);const state=(await b.invoke('state')).data;assert.equal(state.relationship.profiles.length,1);assert.equal(JSON.stringify(state.history),before);assert.equal(b.saved().relationships.profiles.some(p=>p.id===source),false);assert.equal((await b.invoke('relationship','restore',source)).ok,false);
 });
+
+test('memory-preserving restart leaves future chat history empty while queued old turns stay available for organization',async()=>{
+ const calls=[],b=await boot({model:'test',memoryAuto:false},undefined,null,null,{chat:async(s,h,t,signal,o)=>{calls.push({history:structuredClone(h),extra:o.systemExtra});return '以前の返答のテストデータ';},organizeMemory:async(s,job)=>({summary:'本と好みについて話した。',facts:[{sourceId:job.extractTurns[0].id,quote:'紅茶が好きです',kind:'preference'}]})});
+ await b.invoke('chat','紅茶が好きです');const id=(await b.invoke('memory-view')).data.profileId;await b.invoke('memory-edit',id,'summary','本について話しました');await b.invoke('memory-edit',id,'save',{text:'趣味は読書です',kind:'preference'});
+ const before=(await b.invoke('state')).data;assert.equal((await b.as(2,'restart-conversation')).ok,false);b.failSave(true);assert.equal((await b.invoke('restart-conversation')).ok,false);b.failSave(false);assert.equal((await b.invoke('state')).data.history.length,2);
+ assert.equal((await b.invoke('restart-conversation')).ok,true);let state=(await b.invoke('state')).data,view=(await b.invoke('memory-view')).data;assert.equal(state.history.length,0);assert.equal(view.summary,'本について話しました');assert.equal(view.items.length,1);assert.equal(view.stats.archivedTurns,1);assert.equal(state.relationship.affinity,before.relationship.affinity);assert.equal(state.settings.llamaDryMultiplier,before.settings.llamaDryMultiplier);
+ await b.invoke('chat','新しい会話');assert.equal(calls.at(-1).history.length,0);assert.ok(calls.at(-1).extra.includes('本について話しました'));assert.ok(!calls.at(-1).extra.includes('以前の返答のテストデータ'));
+ assert.equal((await b.invoke('memory-organize')).ok,true);view=(await b.invoke('memory-view')).data;assert.equal(view.stats.archivedTurns,0);assert.match(view.summary,/本と好み/);assert.equal(view.items.length,2);
+});
+test('restart cancels stale organization and keeps its queued source for a later attempt',async()=>{
+ let finish;const b=await boot({model:'test',memoryAuto:false},undefined,null,null,{organizeMemory:async()=>new Promise(r=>finish=r)});await b.invoke('chat','昔の話');const pending=b.invoke('memory-organize');await new Promise(r=>setImmediate(r));await b.invoke('restart-conversation');finish({summary:'遅れて返った要約',facts:[]});await pending;
+ const view=(await b.invoke('memory-view')).data;assert.equal(view.summary,'');assert.equal(view.stats.archivedTurns,1);assert.equal(view.organizedAt,0);assert.equal((await b.invoke('state')).data.history.length,0);
+});

@@ -74,7 +74,7 @@ function renderMemoryAvailability(){
  const data=memoryData;if(!data)return;const stats=data.stats||{historyTurns:state.history.length/2,shortTermTurns:Math.min(state.history.length/2,state.settings.historyTurns),pendingTurns:0,pendingSummaryTurns:0};
  const auto=!state.settings.memoryEnabled?'記憶の利用は無効（直近履歴は参照）':state.settings.memoryAuto?'自動整理は有効':'自動整理は無効（手動整理できます）';
  const summary=data.summary?'要約あり':stats.pendingSummaryTurns?'要約待ちの会話があります':'要約はまだありません。直近の会話は履歴から参照します';
- $('memoryAvailability').textContent='対象：'+(state.relationship?.label||state.settings.name)+'\n保存した会話：'+stats.historyTurns+'往復／今回参照する直近履歴：'+stats.shortTermTurns+'往復。'+summary+'。\n長期メモ：'+data.items.length+'件。'+(data.organizedAt?'最終整理：'+new Date(data.organizedAt).toLocaleString('ja-JP')+'。':'整理完了の日時は未記録です。')+'未整理：'+stats.pendingTurns+'往復。'+auto+'。\n長期メモは情報・好みなどがある場合だけ作成します。空でも会話履歴があれば、その範囲は参照します。';
+ $('memoryAvailability').textContent='対象：'+(state.relationship?.label||state.settings.name)+'\n保存した会話：'+stats.historyTurns+'往復／今回参照する直近履歴：'+stats.shortTermTurns+'往復。'+summary+'。\n長期メモ：'+data.items.length+'件。'+(data.organizedAt?'最終整理：'+new Date(data.organizedAt).toLocaleString('ja-JP')+'。':'整理完了の日時は未記録です。')+'前の会話の整理待ち：'+(stats.archivedTurns||0)+'往復。未整理：'+stats.pendingTurns+'往復。'+auto+'。\n長期メモは情報・好みなどがある場合だけ作成します。空でも会話履歴があれば、その範囲は参照します。';
 }
 function updateMemoryBusy(){
  renderMemoryAvailability();
@@ -112,7 +112,7 @@ function renderRelationship(){
  $('relationshipSummary').textContent=`${r.label}：${r.stage}（好感度 ${r.affinity}）・${r.status} ／ 今の気分：${moods[r.mood]||r.mood}`;
  $('confess').disabled=busy||!r.romanceEnabled;
 }
-function updateBusy(value){busy=value;renderLlamaState();updateMemoryBusy();$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear'])$(id).disabled=busy;$('fetchModels').disabled=busy||fetchingModels;$('saveKey').disabled=busy||!keyAvailable;$('deleteKey').disabled=busy||!keySaved;for(const id of ['relationshipProfile','relationshipName','createRelationship','renameRelationship','relationshipSource','mergeRelationship','archiveRelationship','relationshipArchived','restoreRelationship','deleteRelationship','deleteArchivedRelationship','romanceEnabled'])$(id).disabled=busy;$('confess').disabled=busy||!state.relationship?.romanceEnabled;}
+function updateBusy(value){busy=value;renderLlamaState();updateMemoryBusy();$('send').disabled=busy;$('message').disabled=busy;$('stop').hidden=!busy;for(const id of ['saveSettings','clear','restartConversation'])$(id).disabled=busy;$('fetchModels').disabled=busy||fetchingModels;$('saveKey').disabled=busy||!keyAvailable;$('deleteKey').disabled=busy||!keySaved;for(const id of ['relationshipProfile','relationshipName','createRelationship','renameRelationship','relationshipSource','mergeRelationship','archiveRelationship','relationshipArchived','restoreRelationship','deleteRelationship','deleteArchivedRelationship','romanceEnabled'])$(id).disabled=busy;$('confess').disabled=busy||!state.relationship?.romanceEnabled;}
 async function initControl(){
  await refreshMemory();
  $('memoryList').onchange=()=>selectMemory($('memoryList').value);$('newMemory').onclick=()=>selectMemory();
@@ -147,7 +147,7 @@ async function initControl(){
  $('archiveRelationship').onclick=wrap(async()=>{const p=selectedSource();if(confirm('「'+p.label+'」を一覧から非表示にしますか？会話・記憶・関係は残り、復元できます。'))await relationAction('archive',p.id);},'relationshipStatus');
  const deleteProfile=async p=>{
   if(dirty)throw new Error('変更した設定を先に保存してください。');
-  if(!confirm('「'+p.label+'」を完全削除しますか？\n識別子：'+p.id+'\n会話 '+(p.turns||0)+'往復・長期メモ '+(p.notes||0)+'件・要約 '+(p.hasSummary?'あり':'なし')+'\nこのプロフィールの会話・記憶・好感度とVRMへの割り当てを削除し、一覧へ復元できなくなります。統合先へ取り込んだ内容は残ります。'))return;
+  if(!confirm('「'+p.label+'」を完全削除しますか？\n識別子：'+p.id+'\n会話 '+(p.turns||0)+'往復・長期メモ '+(p.notes||0)+'件・要約 '+(p.hasSummary?'あり':'なし')+'・整理待ち '+(p.pendingTurns||0)+'往復\nこのプロフィールの会話・記憶・好感度とVRMへの割り当てを削除し、一覧へ復元できなくなります。統合先へ取り込んだ内容は残ります。'))return;
   await relationAction('delete',p.id);status('relationshipStatus','プロフィールを完全削除しました。');
  };
  $('deleteRelationship').onclick=wrap(()=>deleteProfile(selectedSource()),'relationshipStatus');
@@ -183,6 +183,7 @@ async function initControl(){
  })();};
  $('message').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('chatForm').requestSubmit();}};
  $('stop').onclick=wrap(async()=>{await call(api.cancel());});
+ $('restartConversation').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');if(!confirm('記憶を残して会話をリセットしますか？\n直近の会話を次の返答へ送らない状態にします。要約・長期メモ・好感度は残ります。未整理の会話は整理待ちとして保存し、記憶の自動整理が有効なら後から整理します。'))return;await call(api.restartConversation());status('chatStatus','記憶を残して会話をリセットしました。');});
  $('clear').onclick=wrap(async()=>{if(confirm('このキャラクターとの会話履歴と要約を削除しますか？長期メモと好感度は残ります。'))await call(api.clear());});
  $('resetPosition').onclick=wrap(async()=>{await call(api.action('reset'));});
  $('resetBubble').onclick=wrap(async()=>{await call(api.action('reset-bubble'));});

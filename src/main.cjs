@@ -400,6 +400,13 @@ handle('relationship',(operation,value)=>{
  }catch(e){store.data=previous;throw e;}
  hideSpeech();broadcast({memoryChanged:true});if(store.data.settings.memoryAuto)memoryWorker.schedule();return relationship.view(store.data.relationships);
 },()=>control);
+handle('restart-conversation',()=>{
+ if(active)throw new Error('生成を停止してから会話をリセットしてください。');
+ memoryWorker.cancel();const previous=structuredClone(store.data);
+ try{const profile=relationship.current(store.data.relationships);profile.memory=memory.restartConversation(profile.memory,store.data.history);profile.history=[];store.data.history=[];store.save();}
+ catch(e){store.data=previous;throw e;}
+ hideSpeech();broadcast({memoryChanged:true});if(store.data.settings.memoryEnabled&&store.data.settings.memoryAuto)memoryWorker.schedule();
+},()=>control);
 handle('cancel',()=>{memoryWorker.cancel();cancelVoice();touchResponses.cancel();active?.abort();});handle('clear',()=>{
  memoryWorker.cancel();touchResponses.cancel();if(active)throw new Error('生成を停止してください。');const previous=structuredClone(store.data);
  const profile=relationship.current(store.data.relationships);profile.memory=memory.clearConversation(profile.memory,store.data.history);profile.history=[];store.data.history=[];

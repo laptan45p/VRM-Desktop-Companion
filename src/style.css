@@ -16,3 +16,5 @@ body.input{height:100vh;overflow:hidden}#inputPanel{height:100%;display:flex;fle
 
 
 #llamaSettings{padding:12px 0 20px;border-bottom:1px solid #dbe2d9;margin-bottom:18px}#llamaSettings>button{margin:4px 3px 4px 0}#llamaProgress{display:block;width:100%;height:12px;margin-top:10px;accent-color:#50876f}#llamaLog{font-family:monospace;font-size:11px;white-space:pre;overflow:auto}#llamaSettings summary{cursor:pointer;margin-bottom:12px}
+
+.chat-heading{flex-wrap:wrap;gap:8px}.chat-heading strong{min-width:0;overflow-wrap:anywhere;flex:1 1 auto}

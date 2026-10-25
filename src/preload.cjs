@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('companion', {
   send:text=>ipcRenderer.invoke('chat',text),
   cancel:()=>ipcRenderer.invoke('cancel'),
   clear:()=>ipcRenderer.invoke('clear'),
+  restartConversation:()=>ipcRenderer.invoke('restart-conversation'),
   hit:v=>ipcRenderer.invoke('hit',v),
   touch:(region,gesture)=>ipcRenderer.invoke('touch',region,gesture),
   drag:(phase,x,y)=>ipcRenderer.invoke('drag',phase,x,y),
