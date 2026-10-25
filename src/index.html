@@ -34,8 +34,8 @@
   <label class="check"><input id="memoryEnabled" type="checkbox"> 保存した要約・長期メモを会話に使う</label>
   <label class="check"><input id="restartConversationOnStartup" type="checkbox"> 起動時は記憶を残して新しい会話を始める</label><p class="path">初期設定は有効です。完全終了後の起動時に、選択中のキャラクターの直近履歴をリセットし、要約・長期メモ・好感度と未整理の会話は保持します。無効にすると前回の会話履歴から再開します。</p>
   <label class="check"><input id="memoryAuto" type="checkbox"> 会話の合間に記憶を自動整理する</label>
-  <p class="path">直近の会話は「会話を送る範囲」の往復数までそのまま渡し、その範囲から外れた会話は要約します。手動保存は通常不要です。長期メモはユーザー発言から原文を引用して保存し、話題に関係するものを選んで渡します。記憶は「ふたりの関係」で選んだキャラクターごとに保存されます。</p>
-  <p class="path">自動整理は未整理の会話が2往復、または直近履歴から外れた未要約の会話があるとき、会話終了の5秒後に最大6往復ずつ行います。残りは順に整理します。会話とは別のLLM呼び出しが発生し、クラウド利用時は追加料金がかかります。次の会話・ふれあいを優先して整理を中止します。</p>
+  <p class="path">直近の会話は「会話を送る範囲」の往復数までそのまま渡し、その範囲から外れた会話は要約します。手動保存は通常不要です。長期メモは本人の情報・ふたりの取り決め・仮想の共有体験を分け、原文の出典を照合して保存します。共有記憶では双方の具体的な発言が必要です。話題に関係するものを選んで渡します。記憶は「ふたりの関係」で選んだキャラクターごとに保存されます。</p>
+  <p class="path">自動整理は「覚えておいて」などの明示的な依頼、未整理の会話が2往復、または直近履歴から外れた未要約の会話があるとき、会話終了の5秒後に最大6往復ずつ行います。残りは順に整理します。会話とは別のLLM呼び出しが発生し、クラウド利用時は追加料金がかかります。次の会話・ふれあいを優先して整理を中止します。</p>
   <div><button id="organizeMemory" type="button">今すぐ記憶を整理</button><button id="cancelMemory" type="button">整理を中止</button><button id="refreshMemory" type="button">記憶を再読み込み</button></div>
   <p id="memoryAvailability" class="path" aria-live="polite"></p><p id="memoryStatus" class="status" role="status"></p>
   <details><summary>保存した要約・長期メモを確認する</summary>
@@ -43,6 +43,7 @@
    <label>過去の会話の要約<textarea id="memorySummary" maxlength="600" rows="5"></textarea></label><button id="saveMemorySummary" type="button">要約を保存</button>
    <label>長期メモ<select id="memoryList" size="6"></select></label>
    <button id="newMemory" type="button">新しいメモ</button>
+   <label>記憶の分類<select id="memoryScope"><option value="user">本人の情報・好み</option><option value="shared">ふたりの取り決め・約束</option><option value="scene">仮想の共有体験</option></select></label><p class="path">共有の取り決め・仮想体験は双方の原文を照合して保存します。分類はLLMが判断するため、誤りがあればここで変更できます。古いメモは本人の情報として引き継ぎます。</p>
    <label>種類<select id="memoryKind"><option value="profile">ユーザーの情報</option><option value="preference">好み</option><option value="promise">約束</option><option value="event">出来事</option></select></label>
    <label>メモの内容<textarea id="memoryText" maxlength="400" rows="3"></textarea></label><p id="memorySource" class="path"></p>
    <button id="saveMemory" type="button">メモを保存</button><button id="deleteMemory" type="button">選択したメモを削除</button>

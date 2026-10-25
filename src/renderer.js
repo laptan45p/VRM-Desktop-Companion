@@ -56,16 +56,18 @@ function renderLlamaState(value=state.llamaState||{phase:'stopped'}){
 }
 let memoryData=null,memoryRequest=0,memoryEditing=false,summaryEditing=false;
 const memoryKinds={profile:'情報',preference:'好み',promise:'約束',event:'出来事'};
+const memoryScopes={user:'本人の情報・好み',shared:'ふたりの取り決め・約束',scene:'仮想の共有体験'};
 function selectMemory(id=''){
- const item=memoryData?.items.find(i=>i.id===id);$('memoryList').value=item?.id||'';$('memoryText').value=item?.text||'';$('memoryKind').value=item?.kind||'profile';memoryEditing=false;
- $('memorySource').textContent=!item?'新しいメモを作成します。':item.source.type==='user'?'発言元：ユーザー'+(item.source.at?'（'+new Date(item.source.at).toLocaleString('ja-JP')+'）':'（日時不明）')+'\n原文：'+item.source.quote:'発言元：手動で登録・編集';
+ const item=memoryData?.items.find(i=>i.id===id);$('memoryList').value=item?.id||'';$('memoryText').value=item?.text||'';$('memoryKind').value=item?.kind||'profile';$('memoryScope').value=item?.scope||'user';memoryEditing=false;
+ const at=item?.source.at?'（'+new Date(item.source.at).toLocaleString('ja-JP')+'）':'（日時不明）';
+ $('memorySource').textContent=!item?'新しいメモを作成します。':item.source.type==='conversation'?'発言元：ユーザーとキャラクター'+at+'\nユーザー原文：'+item.source.quote+'\nキャラクター原文：'+item.source.assistantQuote:item.source.type==='user'?'発言元：ユーザー'+at+'\n原文：'+item.source.quote:'発言元：手動で登録・編集';
 }
 async function refreshMemory(force=false){
  const request=++memoryRequest,data=await call(api.memoryView());if(request!==memoryRequest)return;
  const changed=!memoryData||memoryData.profileId!==data.profileId,selected=$('memoryList').value;memoryData=data;
  $('memoryInfo').textContent='対象：'+(state.relationship?.label||state.settings.name)+' ／ 長期メモ '+data.items.length+'件';
  renderMemoryAvailability();
- $('memoryList').replaceChildren();for(const item of data.items)$('memoryList').add(new Option('['+memoryKinds[item.kind]+'] '+item.text.replace(/\s+/g,' ').slice(0,70),item.id));
+ $('memoryList').replaceChildren();for(const item of data.items)$('memoryList').add(new Option('['+memoryScopes[item.scope||'user']+'／'+memoryKinds[item.kind]+'] '+item.text.replace(/\s+/g,' ').slice(0,70),item.id));
  $('memoryList').value=selected;
  if(changed||force||!summaryEditing){$('memorySummary').value=data.summary;summaryEditing=false;}
  if(changed||force||!memoryEditing)selectMemory(changed?'':selected);
@@ -116,10 +118,10 @@ function updateBusy(value){busy=value;renderLlamaState();updateMemoryBusy();$('s
 async function initControl(){
  await refreshMemory();
  $('memoryList').onchange=()=>selectMemory($('memoryList').value);$('newMemory').onclick=()=>selectMemory();
- $('memoryText').oninput=()=>memoryEditing=true;$('memoryKind').onchange=()=>memoryEditing=true;$('memorySummary').oninput=()=>summaryEditing=true;
+ $('memoryText').oninput=()=>memoryEditing=true;$('memoryKind').onchange=()=>memoryEditing=true;$('memoryScope').onchange=()=>memoryEditing=true;$('memorySummary').oninput=()=>summaryEditing=true;
  $('refreshMemory').onclick=wrap(async()=>{if((memoryEditing||summaryEditing)&&!confirm('編集中の記憶を破棄して読み直しますか？'))return;await refreshMemory(true);},'memoryStatus');
  const editMemory=async(operation,value)=>{if(!memoryData)throw new Error('記憶を読み直してください。');await call(api.editMemory(memoryData.profileId,operation,value));await refreshMemory(true);status('memoryStatus','記憶を保存しました。');};
- $('saveMemory').onclick=wrap(()=>editMemory('save',{id:$('memoryList').value,text:$('memoryText').value,kind:$('memoryKind').value}),'memoryStatus');
+ $('saveMemory').onclick=wrap(()=>editMemory('save',{id:$('memoryList').value,text:$('memoryText').value,kind:$('memoryKind').value,scope:$('memoryScope').value}),'memoryStatus');
  $('deleteMemory').onclick=wrap(async()=>{const id=$('memoryList').value;if(!id)throw new Error('削除するメモを選んでください。');if(confirm('この長期メモを削除しますか？'))await editMemory('delete',id);},'memoryStatus');
  $('saveMemorySummary').onclick=wrap(()=>editMemory('summary',$('memorySummary').value),'memoryStatus');
  $('clearMemory').onclick=wrap(async()=>{if(confirm('このキャラクターの要約と長期メモを全消去しますか？会話履歴と好感度は残ります。'))await editMemory('clear');},'memoryStatus');
@@ -158,7 +160,7 @@ async function initControl(){
  fillSettings(state.settings);status('voiceStatus',state.voiceStatus||'');$('chooseSpeaker').onclick=wrap(async()=>{const path=await call(api.chooseSpeaker());if(path)$('speakerPath').textContent=path;},'voiceStatus');$('testVoice').onclick=wrap(async()=>{if(dirty)throw new Error('変更した設定を先に保存してください。');await call(api.action('test-voice'));},'voiceStatus');$('stopVoice').onclick=()=>api.action('stop-voice');refreshMotionOptions();$('chooseMotions').onclick=wrap(async()=>{const names=await call(api.chooseMotions());if(names){await refreshMotionOptions();$('motionPath').textContent=state.settings.motionFolder;status('motionStatus',names.length+'件のモーションを登録しました。');}},'motionStatus');$('dataPath').textContent='設定と履歴：'+state.dataPath;
  const tabs=selectControlTab;
  $('chatTab').onclick=()=>tabs('chat');$('settingsTab').onclick=()=>tabs('settings');
- $('settingsForm').oninput=e=>{if(['relationshipProfile','relationshipName','relationshipSource','relationshipArchived','romanceEnabled','expressionName','expressionWeight','memoryList','memoryText','memoryKind','memorySummary'].includes(e?.target?.id))return;dirty=true;};
+ $('settingsForm').oninput=e=>{if(['relationshipProfile','relationshipName','relationshipSource','relationshipArchived','romanceEnabled','expressionName','expressionWeight','memoryList','memoryText','memoryKind','memoryScope','memorySummary'].includes(e?.target?.id))return;dirty=true;};
  $('provider').onchange=()=>{invalidateModels();$('endpoint').value={ollama:'http://127.0.0.1:11434',lmstudio:'http://127.0.0.1:1234',llamacpp:'http://127.0.0.1:'+Number($('llamaPort').value),openai:'https://api.openai.com/v1',openrouter:'https://openrouter.ai/api/v1',compatible:''}[$('provider').value];$('apiKey').value='';setModels([],$('provider').value==='openai'?'gpt-6-luna':'');dirty=true;updateProviderUI();};
  $('endpoint').oninput=()=>{invalidateModels();dirty=true;$('apiKey').value='';refreshKeyStatus();};
  $('saveKey').onclick=wrap(async()=>{const key=$('apiKey').value;$('apiKey').value='';await call(api.saveKey(settingsFromForm(),key));await refreshKeyStatus();},'keyStatus');

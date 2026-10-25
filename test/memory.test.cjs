@@ -42,7 +42,7 @@ test('worker debounce, cancellation and stale completions never commit to anothe
  worker.schedule();worker.schedule();assert.equal(cleared,1);const pending=worker.run(true);worker.cancel();done({summary:'',facts:[]});await pending;assert.equal(commits,0);assert.equal(worker.status,'');
  worker.generate=async()=>({});await worker.run(true);assert.equal(commits,1);worker.generate=async()=>{throw new Error('bad JSON');};await assert.rejects(worker.run(true),/bad JSON/);assert.equal(commits,1);
 });
-test('memory extraction uses the selected provider, bounded independent instructions and no character or assistant facts',async()=>{
+test('memory extraction uses the selected provider and bounded independent instructions without the character persona',async()=>{
  const old=global.fetch;let body;global.fetch=async(_url,o)=>{body=JSON.parse(o.body);return new Response(JSON.stringify({message:{content:'{"summary":"","facts":[]}'}}),{headers:{'Content-Type':'application/json'}});};
  try{const s={...DEFAULTS,model:'test',persona:'秘密の性格設定',name:'キャラ名',selfPronoun:'あたし'};await organizeMemory(s,M.plan(null,history(1),6,true));assert.equal(body.options.num_predict,1024);assert.equal(body.options.temperature,.2);assert.ok(!body.messages[0].content.includes('秘密の性格設定'));assert.ok(!body.messages[0].content.includes('あたし'));const input=JSON.parse(body.messages[1].content);assert.equal(input.userSources.length,1);assert.equal(input.olderConversation.length,0);assert.equal(input.userSources[0].text,history(1)[0].content);}finally{global.fetch=old;}
 });
@@ -79,4 +79,27 @@ test('conversation restart preserves saved memory and queues unprocessed turns u
 test('restart overflow does not drop unprocessed data and explicit erase clears queued conversations',()=>{
  const queued=M.restartConversation(null,history(100)),snapshot=structuredClone(queued);assert.throws(()=>M.restartConversation(queued,[{role:'user',content:'追加の会話'},{role:'assistant',content:'追加の返事'}]),/100往復/);assert.deepEqual(queued,snapshot);
  const m=M.edit(M.restartConversation(null,history(2)),'','残すメモ');const erased=M.clearConversation(m,[]);assert.equal(erased.pending.length,0);assert.equal(erased.items.length,1);assert.equal(M.plan(erased,[],12,true),null);const all=M.clearAll(m,[]);assert.equal(all.pending.length,0);assert.equal(all.items.length,0);
+});
+
+test('personal facts and two-sided shared memories keep their scope and exact source quotes',()=>{
+ const h=[{role:'user',content:'紅茶が好きです。'},{role:'assistant',content:'好みを教えてくれてありがとう。'},{role:'user',content:'次は一緒に映画の話をしようね。'},{role:'assistant',content:'次は映画の話をしよう。楽しみだね。'},{role:'user',content:'お話の中で一緒に星を眺めているよ。'},{role:'assistant',content:'隣で星を眺めているね。'}],job=M.plan(null,h,12,true),facts=job.extractTurns.map((p,i)=>({sourceId:p.id,scope:['user','shared','scene'][i],kind:['preference','promise','event'][i],quote:p.user,assistantQuote:p.assistant})),m=M.apply(null,job,{summary:'',facts},1234);
+ assert.deepEqual(m.items.map(i=>i.scope),['user','shared','scene']);assert.equal(m.items[0].text,h[0].content);assert.equal(m.items[0].source.type,'user');assert.equal(m.items[1].source.type,'conversation');assert.equal(m.items[1].source.quote,h[2].content);assert.equal(m.items[1].source.assistantQuote,h[3].content);assert.match(m.items[2].text,/星/);
+ const ctx=M.context(m,'前回の会話を覚えてる？');assert.match(ctx,/"scope":"scene"/);assert.match(ctx,/実生活の出来事へ読み替えず/);assert.match(ctx,/恋人状態はアプリ管理/);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'scoped-memory-'));try{const store=new Store(dir);R.current(store.data.relationships).memory=m;store.save();const loaded=new Store(dir);loaded.load();assert.deepEqual(R.current(loaded.data.relationships).memory,m);}finally{fs.rmSync(dir,{recursive:true,force:true});}
+ const deleted=M.remove(m,m.items[2].id);assert.equal(M.apply(deleted,job,{summary:'',facts:[facts[2]]}).items.some(i=>i.scope==='scene'),false);
+});
+test('shared memories reject missing, invented, thought-only or vague evidence and invalid classifications',()=>{
+ const h=[{role:'user',content:'次は一緒に映画の話をしようね。'},{role:'assistant',content:'<think>非表示の処理用データです</think>次は映画の話をしよう。楽しみだね。'},{role:'user',content:'そうしよう'},{role:'assistant',content:'映画の話をしようね。'}],job=M.plan(null,h,12,true),source=job.extractTurns[0],base={sourceId:source.id,quote:source.user,scope:'shared',kind:'promise'};
+ const facts=[base,{...base,assistantQuote:'存在しない発言です'},{...base,assistantQuote:'非表示の処理用データです'},{...base,quote:'ユーザーは言っていない発言',assistantQuote:'次は映画の話をしよう。'},{...base,scope:'unknown',assistantQuote:'次は映画の話をしよう。'},{...base,scope:'scene',assistantQuote:'次は映画の話をしよう。'},{...base,sourceId:job.extractTurns[1].id,quote:'そうしよう',assistantQuote:'映画の話をしようね。'}];for(const fact of facts)assert.equal(M.apply(null,job,{summary:'',facts:[fact]}).items.length,0);
+});
+test('remember requests are prioritized without treating a request alone as a valid lasting fact',()=>{
+ const h=history(8);h[14].content='青い花が好きなので覚えておいて';const job=M.plan(null,h,12);assert.equal(job.extractTurns[0].user,h[14].content);assert.equal(job.extractTurns.length,6);
+ assert.ok(M.plan(null,h.slice(14),12));assert.equal(M.plan(null,history(1),12),null);assert.match(M.instructions,/依頼そのものだけではなく/);
+ const payload=JSON.parse(M.prompt(job));assert.ok(payload.userSources.every(p=>typeof p.assistant==='string'));assert.match(M.instructions,/相棒の提案だけ/);
+});
+test('legacy notes migrate without reclassification and scoped manual edits, merges and deletion stay attributable',()=>{
+ const legacy=M.clean({items:[{id:'old',text:'以前のメモ',kind:'profile',source:{type:'user',quote:'以前のメモ'}}]});assert.equal(legacy.items[0].scope,'user');assert.equal(legacy.items[0].source.quote,'以前のメモ');
+ let m=M.edit(legacy,'','同じ言葉の記憶','event',100,'scene');m=M.edit(m,'','同じ言葉の記憶','preference',200,'user');assert.equal(m.items.length,3);
+ const scene=m.items.find(i=>i.scope==='scene');m=M.edit(m,scene.id,'共有した出来事','event',300,'shared');assert.equal(m.items.find(i=>i.id===scene.id).source.type,'manual');assert.throws(()=>M.edit(m,'','不正な分類','profile',300,'bad'));
+ const merged=M.merge(m,M.edit(null,'','同じ言葉の記憶','event',400,'scene'));assert.equal(merged.items.length,4);assert.equal(M.clean(JSON.parse(JSON.stringify(merged))).items.length,4);
 });

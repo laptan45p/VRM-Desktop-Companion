@@ -310,7 +310,7 @@ handle('memory-edit',(profileId,operation,value)=>{
  const profile=relationship.current(store.data.relationships);if(profile.id!==profileId)throw new Error('キャラクターが切り替わりました。記憶を読み直してください。');
  memoryWorker.cancel();const previous=structuredClone(store.data);
  try{
-  if(operation==='save')profile.memory=memory.edit(profile.memory,value?.id,value?.text,value?.kind);
+  if(operation==='save')profile.memory=memory.edit(profile.memory,value?.id,value?.text,value?.kind,undefined,value?.scope??'user');
   else if(operation==='delete')profile.memory=memory.remove(profile.memory,value);
   else if(operation==='summary'){if(typeof value!=='string'||value.length>600)throw new Error('要約は600文字以内で入力してください。');profile.memory=memory.clean(profile.memory);profile.memory.summary=value.trim();profile.memory.summaryAt=Date.now();}
   else if(operation==='clear')profile.memory=memory.clearAll(profile.memory,store.data.history);
